@@ -39,6 +39,23 @@ struct Vertex {
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
+struct RibbonVertex {
+    position: [f32; 3],
+    partner: [f32; 3],
+    side: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct RibbonUniform {
+    viewport_width_px: f32,
+    viewport_height_px: f32,
+    line_width_px: f32,
+    _padding: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
 struct CubeVertex {
     position: [f32; 3],
     normal: [f32; 3],
@@ -83,7 +100,7 @@ struct BodyDrawRanges {
     mesh: Range<u32>,
     edge_lines: Range<u32>,
     faces: Vec<Range<u32>>,
-    edges: Vec<Range<u32>>,
+    ribbon_edges: Vec<Range<u32>>,
     model_slot: u32,
     material: Material,
     double_sided: bool,
@@ -173,6 +190,10 @@ pub struct Renderer {
     hidden_edge_tint_buffer: wgpu::Buffer,
     hover_bind_group: wgpu::BindGroup,
     selected_bind_group: wgpu::BindGroup,
+    hover_ribbon_bind_group: wgpu::BindGroup,
+    hover_ribbon_tint_buffer: wgpu::Buffer,
+    selected_ribbon_bind_group: wgpu::BindGroup,
+    selected_ribbon_tint_buffer: wgpu::Buffer,
     visualize_selected_bind_group: wgpu::BindGroup,
     preview_bind_group: wgpu::BindGroup,
     interference_bind_group: wgpu::BindGroup,
@@ -188,6 +209,12 @@ pub struct Renderer {
     mesh_vertices: wgpu::Buffer,
     mesh_indices: wgpu::Buffer,
     edge_vertices: wgpu::Buffer,
+    ribbon_vertices: wgpu::Buffer,
+    ribbon_indices: wgpu::Buffer,
+    hover_ribbon_width: wgpu::Buffer,
+    selected_ribbon_width: wgpu::Buffer,
+    hover_ribbon_width_group: wgpu::BindGroup,
+    selected_ribbon_width_group: wgpu::BindGroup,
     measure_vertices: wgpu::Buffer,
     measure_count: u32,
     grid_vertices: wgpu::Buffer,
@@ -215,7 +242,7 @@ pub struct Renderer {
     body_edge_pipeline: wgpu::RenderPipeline,
     hidden_edge_pipeline: wgpu::RenderPipeline,
     accent_line_pipeline: wgpu::RenderPipeline,
-    clipped_accent_line_pipeline: wgpu::RenderPipeline,
+    ribbon_pipeline: wgpu::RenderPipeline,
     grid_pipeline: wgpu::RenderPipeline,
     gizmo_pipeline: wgpu::RenderPipeline,
     cube_pipeline: wgpu::RenderPipeline,
@@ -261,6 +288,9 @@ impl Renderer {
         let mesh_vertices = vertex_buffer(&device, "mesh vertices", &dummy_vertex);
         let mesh_indices = index_buffer(&device, "mesh indices", &[0]);
         let edge_vertices = vertex_buffer(&device, "BRep edge vertices", &dummy_vertex);
+        let ribbon_vertices =
+            ribbon_vertex_buffer(&device, "BRep ribbon vertices", &[RibbonVertex::zeroed()]);
+        let ribbon_indices = index_buffer(&device, "BRep ribbon indices", &[0]);
         let measure_vertices = vertex_buffer(&device, "measure line", &dummy_vertex);
         let extent = 10_000.0;
         let grid_vertices = vertex_buffer(
@@ -380,6 +410,24 @@ impl Renderer {
             "selected tint",
             [1.0, 0.31, 0.08, 0.72],
         );
+        let mut hover_ribbon_color = canvas_theme.accent;
+        hover_ribbon_color[3] = 0.55;
+        let (hover_ribbon_bind_group, hover_ribbon_tint_buffer) = tint_bind_group(
+            &device,
+            &bind_group_layout,
+            &uniform_buffer,
+            &model_buffer,
+            "hover ribbon tint",
+            hover_ribbon_color,
+        );
+        let (selected_ribbon_bind_group, selected_ribbon_tint_buffer) = tint_bind_group(
+            &device,
+            &bind_group_layout,
+            &uniform_buffer,
+            &model_buffer,
+            "selected ribbon tint",
+            canvas_theme.accent,
+        );
         let (visualize_selected_bind_group, _) = tint_bind_group(
             &device,
             &bind_group_layout,
@@ -449,6 +497,30 @@ impl Renderer {
             bind_group_layouts: &[Some(&bind_group_layout)],
             immediate_size: 0,
         });
+        let ribbon_width_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("ribbon width layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(size_of::<RibbonUniform>() as u64),
+                    },
+                    count: None,
+                }],
+            });
+        let ribbon_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("ribbon pipeline layout"),
+                bind_group_layouts: &[Some(&bind_group_layout), None, Some(&ribbon_width_layout)],
+                immediate_size: 0,
+            });
+        let (hover_ribbon_width, hover_ribbon_width_group) =
+            ribbon_width_bind_group(&device, &ribbon_width_layout, "hover ribbon width");
+        let (selected_ribbon_width, selected_ribbon_width_group) =
+            ribbon_width_bind_group(&device, &ribbon_width_layout, "selected ribbon width");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("viewport shader"),
             source: wgpu::ShaderSource::Wgsl(SHADER.into()),
@@ -579,16 +651,7 @@ impl Renderer {
             false,
             Some(wgpu::BlendState::ALPHA_BLENDING),
         );
-        let clipped_accent_line_pipeline = create_pipeline(
-            &device,
-            &pipeline_layout,
-            &shader,
-            "vs_line",
-            "fs_tint_clipped",
-            wgpu::PrimitiveTopology::LineList,
-            false,
-            Some(wgpu::BlendState::ALPHA_BLENDING),
-        );
+        let ribbon_pipeline = create_ribbon_pipeline(&device, &ribbon_pipeline_layout, &shader);
         let grid_pipeline = create_pipeline(
             &device,
             &pipeline_layout,
@@ -716,6 +779,10 @@ impl Renderer {
             hidden_edge_tint_buffer,
             hover_bind_group,
             selected_bind_group,
+            hover_ribbon_bind_group,
+            hover_ribbon_tint_buffer,
+            selected_ribbon_bind_group,
+            selected_ribbon_tint_buffer,
             visualize_selected_bind_group,
             preview_bind_group,
             interference_bind_group,
@@ -731,6 +798,12 @@ impl Renderer {
             mesh_vertices,
             mesh_indices,
             edge_vertices,
+            ribbon_vertices,
+            ribbon_indices,
+            hover_ribbon_width,
+            selected_ribbon_width,
+            hover_ribbon_width_group,
+            selected_ribbon_width_group,
             measure_vertices,
             measure_count: 0,
             grid_vertices,
@@ -758,7 +831,7 @@ impl Renderer {
             body_edge_pipeline,
             hidden_edge_pipeline,
             accent_line_pipeline,
-            clipped_accent_line_pipeline,
+            ribbon_pipeline,
             grid_pipeline,
             gizmo_pipeline,
             cube_pipeline,
@@ -826,6 +899,15 @@ impl Renderer {
             self.queue
                 .write_buffer(buffer, 0, bytemuck::bytes_of(&Tint { color }));
         }
+        let mut hover_ribbon_color = canvas_theme.accent;
+        hover_ribbon_color[3] = 0.55;
+        for (buffer, color) in [
+            (&self.hover_ribbon_tint_buffer, hover_ribbon_color),
+            (&self.selected_ribbon_tint_buffer, canvas_theme.accent),
+        ] {
+            self.queue
+                .write_buffer(buffer, 0, bytemuck::bytes_of(&Tint { color }));
+        }
         for (index, (region, _)) in self.orientation_cube.ranges.iter().enumerate() {
             for (buffer, color) in [
                 (
@@ -869,6 +951,8 @@ impl Renderer {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
         let mut edge_vertices = Vec::new();
+        let mut ribbon_vertices = Vec::new();
+        let mut ribbon_indices = Vec::new();
         let mut body_ranges = Vec::new();
         for (id, mesh, double_sided, material) in &self.scene_cache {
             let vertex_base = vertices.len() as u32;
@@ -899,10 +983,22 @@ impl Renderer {
                 curvature: 0.0,
             }));
             let edge_lines = edge_base..edge_vertices.len() as u32;
-            let edges = mesh
+            let ribbon_edges = mesh
                 .edges
                 .iter()
-                .map(|edge| edge_base + edge.range.start..edge_base + edge.range.end)
+                .map(|edge| {
+                    debug_assert!(edge.range.start <= edge.range.end);
+                    let start = ribbon_indices.len() as u32;
+                    for segment in edge.points.windows(2) {
+                        append_ribbon_segment(
+                            &mut ribbon_vertices,
+                            &mut ribbon_indices,
+                            Vec3::from(segment[0]),
+                            Vec3::from(segment[1]),
+                        );
+                    }
+                    start..ribbon_indices.len() as u32
+                })
                 .collect();
             let model_slot = body_ranges.len() as u32 + 1;
             body_ranges.push(BodyDrawRanges {
@@ -910,7 +1006,7 @@ impl Renderer {
                 mesh: mesh_range,
                 edge_lines,
                 faces,
-                edges,
+                ribbon_edges,
                 model_slot,
                 material: *material,
                 double_sided: *double_sided,
@@ -930,6 +1026,20 @@ impl Renderer {
             vertex_buffer(&self.device, "BRep edge vertices", &[Vertex::zeroed()])
         } else {
             vertex_buffer(&self.device, "BRep edge vertices", &edge_vertices)
+        };
+        self.ribbon_vertices = if ribbon_vertices.is_empty() {
+            ribbon_vertex_buffer(
+                &self.device,
+                "BRep ribbon vertices",
+                &[RibbonVertex::zeroed()],
+            )
+        } else {
+            ribbon_vertex_buffer(&self.device, "BRep ribbon vertices", &ribbon_vertices)
+        };
+        self.ribbon_indices = if ribbon_indices.is_empty() {
+            index_buffer(&self.device, "BRep ribbon indices", &[0])
+        } else {
+            index_buffer(&self.device, "BRep ribbon indices", &ribbon_indices)
         };
         self.body_ranges = body_ranges;
     }
@@ -1364,6 +1474,7 @@ impl Renderer {
         analysis: AnalysisMode,
         visualize: bool,
         hovered: Option<SelItem>,
+        hovered_edge: Option<(BodyId, u32)>,
         selected: &[SelItem],
         gizmo: Option<GizmoRender>,
         extrude_arrow: Option<ExtrudeArrowRender>,
@@ -1395,6 +1506,26 @@ impl Renderer {
         };
         self.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
+        let ribbon_uniform = |line_width_px| RibbonUniform {
+            viewport_width_px: width as f32,
+            viewport_height_px: height as f32,
+            line_width_px,
+            _padding: 0.0,
+        };
+        self.queue.write_buffer(
+            &self.hover_ribbon_width,
+            0,
+            bytemuck::bytes_of(&ribbon_uniform(
+                2.5 * orientation_cube.device_scale.max(1.0),
+            )),
+        );
+        self.queue.write_buffer(
+            &self.selected_ribbon_width,
+            0,
+            bytemuck::bytes_of(&ribbon_uniform(
+                3.0 * orientation_cube.device_scale.max(1.0),
+            )),
+        );
         self.upload_model_matrices(
             gizmo.as_ref(),
             extrude_arrow.as_ref(),
@@ -1629,6 +1760,9 @@ impl Renderer {
             if let Some(item) = hovered {
                 self.draw_highlight(&mut pass, item, false, visualize);
             }
+            if let Some((body, edge)) = hovered_edge {
+                self.draw_highlight(&mut pass, SelItem::Edge(body, edge), false, visualize);
+            }
             for &item in selected {
                 self.draw_highlight(&mut pass, item, true, visualize);
             }
@@ -1793,10 +1927,29 @@ impl Renderer {
                 }
             }
             SelItem::Edge(_, edge) => {
-                if let Some(range) = body.edges.get(edge as usize) {
-                    pass.set_pipeline(&self.clipped_accent_line_pipeline);
-                    pass.set_vertex_buffer(0, self.edge_vertices.slice(..));
-                    pass.draw(range.clone(), 0..1);
+                if let Some(range) = body.ribbon_edges.get(edge as usize) {
+                    pass.set_pipeline(&self.ribbon_pipeline);
+                    pass.set_bind_group(
+                        0,
+                        if selected {
+                            &self.selected_ribbon_bind_group
+                        } else {
+                            &self.hover_ribbon_bind_group
+                        },
+                        &[body.model_slot * MODEL_STRIDE as u32],
+                    );
+                    pass.set_bind_group(
+                        2,
+                        if selected {
+                            &self.selected_ribbon_width_group
+                        } else {
+                            &self.hover_ribbon_width_group
+                        },
+                        &[],
+                    );
+                    pass.set_vertex_buffer(0, self.ribbon_vertices.slice(..));
+                    pass.set_index_buffer(self.ribbon_indices.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(range.clone(), 0, 0..1);
                 }
             }
             SelItem::Profile(_, _)
@@ -1885,12 +2038,97 @@ fn tint_bind_group(
     (bind_group, tint)
 }
 
+fn ribbon_width_bind_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    label: &str,
+) -> (wgpu::Buffer, wgpu::BindGroup) {
+    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(label),
+        contents: bytemuck::bytes_of(&RibbonUniform::zeroed()),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+    let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(label),
+        layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: buffer.as_entire_binding(),
+        }],
+    });
+    (buffer, group)
+}
+
 fn vertex_buffer(device: &wgpu::Device, label: &str, vertices: &[Vertex]) -> wgpu::Buffer {
     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some(label),
         contents: bytemuck::cast_slice(vertices),
         usage: wgpu::BufferUsages::VERTEX,
     })
+}
+
+fn ribbon_vertex_buffer(
+    device: &wgpu::Device,
+    label: &str,
+    vertices: &[RibbonVertex],
+) -> wgpu::Buffer {
+    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(label),
+        contents: bytemuck::cast_slice(vertices),
+        usage: wgpu::BufferUsages::VERTEX,
+    })
+}
+
+fn append_ribbon_segment(
+    vertices: &mut Vec<RibbonVertex>,
+    indices: &mut Vec<u32>,
+    a: Vec3,
+    b: Vec3,
+) {
+    let base = vertices.len() as u32;
+    vertices.extend([
+        RibbonVertex {
+            position: a.to_array(),
+            partner: b.to_array(),
+            side: -1.0,
+        },
+        RibbonVertex {
+            position: a.to_array(),
+            partner: b.to_array(),
+            side: 1.0,
+        },
+        RibbonVertex {
+            position: b.to_array(),
+            partner: a.to_array(),
+            side: 1.0,
+        },
+        RibbonVertex {
+            position: b.to_array(),
+            partner: a.to_array(),
+            side: -1.0,
+        },
+    ]);
+    indices.extend([base, base + 2, base + 1, base + 1, base + 2, base + 3]);
+}
+
+#[cfg(test)]
+fn ribbon_perpendicular_offset(
+    a: glam::Vec4,
+    b: glam::Vec4,
+    viewport: glam::Vec2,
+    line_width_px: f32,
+    side: f32,
+) -> glam::Vec2 {
+    if a.w.abs() <= f32::EPSILON || b.w.abs() <= f32::EPSILON {
+        return glam::Vec2::ZERO;
+    }
+    let delta = (b.truncate().truncate() / b.w - a.truncate().truncate() / a.w) * viewport;
+    let length = delta.length();
+    if !length.is_finite() || length <= f32::EPSILON {
+        return glam::Vec2::ZERO;
+    }
+    glam::Vec2::new(-delta.y, delta.x) / length * line_width_px * side
+        / viewport.max(glam::Vec2::ONE)
 }
 
 fn vertex_buffer_or_dummy(device: &wgpu::Device, label: &str, vertices: &[Vertex]) -> wgpu::Buffer {
@@ -2030,6 +2268,55 @@ fn create_pipeline(
             } else {
                 Default::default()
             },
+        }),
+        multisample: wgpu::MultisampleState {
+            count: SAMPLE_COUNT,
+            ..Default::default()
+        },
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
+fn create_ribbon_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("emphasized edge ribbon"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs_ribbon"),
+            compilation_options: Default::default(),
+            buffers: &[wgpu::VertexBufferLayout {
+                array_stride: size_of::<RibbonVertex>() as u64,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32],
+            }],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some("fs_tint_clipped"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: COLOR_FORMAT,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            cull_mode: None,
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: Some(false),
+            depth_compare: Some(wgpu::CompareFunction::Always),
+            stencil: Default::default(),
+            bias: Default::default(),
         }),
         multisample: wgpu::MultisampleState {
             count: SAMPLE_COUNT,
@@ -2699,6 +2986,7 @@ struct Uniforms {
     analysis: vec4<f32>,
 };
 struct Tint { color: vec4<f32> };
+struct RibbonUniform { viewport_width_px: f32, viewport_height_px: f32, line_width_px: f32, padding: f32 };
 struct Model {
     matrix: mat4x4<f32>,
     base_color_metallic: vec4<f32>,
@@ -2707,6 +2995,7 @@ struct Model {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<uniform> tint: Tint;
 @group(0) @binding(2) var<uniform> model: Model;
+@group(2) @binding(0) var<uniform> ribbon: RibbonUniform;
 @group(1) @binding(0) var cube_labels: texture_2d<f32>;
 @group(1) @binding(1) var cube_label_sampler: sampler;
 struct Out { @builtin(position) clip: vec4<f32>, @location(0) world: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) local: vec3<f32>, @location(3) curvature: f32 };
@@ -2749,6 +3038,30 @@ struct BackgroundOut { @builtin(position) clip: vec4<f32>, @location(0) vertical
 @vertex fn vs_line(@location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) curvature: f32) -> Out {
     let world = model.matrix * vec4(position, 1.0);
     var out: Out; out.world = world.xyz; out.local = position; out.normal = (model.matrix * vec4(normal, 0.0)).xyz; out.curvature = curvature; out.clip = uniforms.view_projection * world; out.clip.z -= 2e-4 * out.clip.w; return out;
+}
+@vertex fn vs_ribbon(@location(0) position: vec3<f32>, @location(1) partner: vec3<f32>, @location(2) side: f32) -> Out {
+    let world = model.matrix * vec4(position, 1.0);
+    let partner_world = model.matrix * vec4(partner, 1.0);
+    var clip = uniforms.view_projection * world;
+    let partner_clip = uniforms.view_projection * partner_world;
+    let viewport = max(vec2(ribbon.viewport_width_px, ribbon.viewport_height_px), vec2(1.0));
+    var delta = vec2(0.0);
+    if (abs(clip.w) > 1e-6 && abs(partner_clip.w) > 1e-6) {
+        delta = (partner_clip.xy / partner_clip.w - clip.xy / clip.w) * viewport;
+    }
+    let segment_length = length(delta);
+    var offset = vec2(0.0);
+    if (segment_length > 1e-6) {
+        offset = vec2(-delta.y, delta.x) / segment_length * ribbon.line_width_px * side / viewport;
+    }
+    clip = vec4(clip.xy + offset * clip.w, clip.z, clip.w);
+    var out: Out;
+    out.world = world.xyz;
+    out.local = position;
+    out.normal = vec3(0.0);
+    out.curvature = 0.0;
+    out.clip = clip;
+    return out;
 }
 @fragment fn fs_mesh(input: Out) -> @location(0) vec4<f32> {
     if (dot(input.world, uniforms.clip_plane.xyz) > uniforms.clip_plane.w) { discard; }
@@ -2833,3 +3146,25 @@ fn grid_line(value: f32, pitch: f32) -> f32 {
     return vec4(color, alpha);
 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    use glam::{Vec2, Vec4};
+
+    use super::ribbon_perpendicular_offset;
+
+    #[test]
+    fn ribbon_offsets_are_symmetric_and_degenerate_segments_are_finite() {
+        let viewport = Vec2::new(800.0, 600.0);
+        let a = Vec4::new(-0.5, 0.0, 0.3, 1.0);
+        let b = Vec4::new(0.5, 0.0, 0.3, 1.0);
+        let positive = ribbon_perpendicular_offset(a, b, viewport, 3.0, 1.0);
+        let negative = ribbon_perpendicular_offset(a, b, viewport, 3.0, -1.0);
+        assert!((positive + negative).length() < 1.0e-7);
+        assert!(positive.is_finite() && positive.length() > 0.0);
+
+        let degenerate = ribbon_perpendicular_offset(a, a, viewport, 3.0, 1.0);
+        assert_eq!(degenerate, Vec2::ZERO);
+        assert!(degenerate.is_finite());
+    }
+}

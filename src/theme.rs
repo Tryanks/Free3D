@@ -100,6 +100,8 @@ pub struct Theme {
 /// convention already used by the renderer.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CanvasTheme {
+    /// Selection accent used for emphasized model geometry.
+    pub accent: [f32; 4],
     /// Background gradient, top.
     pub bg_top: [f32; 4],
     /// Background gradient, bottom.
@@ -175,6 +177,7 @@ impl Theme {
             text_md: 13.0,
             text_sm: 11.0,
             canvas: CanvasTheme {
+                accent: [1.0, 0.478, 0.184, 1.0],
                 bg_top: [0.070, 0.094, 0.125, 1.0],
                 bg_bottom: [0.035, 0.048, 0.070, 1.0],
                 grid_minor: [0.28, 0.32, 0.37, 0.16],
@@ -227,6 +230,7 @@ impl Theme {
             text_md: 13.0,
             text_sm: 11.0,
             canvas: CanvasTheme {
+                accent: [0.949, 0.416, 0.122, 1.0],
                 bg_top: [0.952, 0.955, 0.960, 1.0],
                 bg_bottom: [0.912, 0.917, 0.925, 1.0],
                 grid_minor: [0.45, 0.47, 0.50, 0.18],

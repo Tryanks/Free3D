@@ -4,6 +4,13 @@ use glam::{DVec3, Mat4, Vec2, Vec3};
 
 use crate::{camera::OrbitCamera, document::BodyId, kernel::BodyMesh};
 
+/// Logical-pixel radius used for body-edge picking.
+pub const EDGE_PICK_THRESHOLD_PX: f32 = 8.0;
+
+/// Fraction of the scene diagonal tolerated between a face and an edge at the
+/// same visible surface.
+pub const EDGE_OCCLUSION_EPSILON_FRACTION: f32 = 2.0e-3;
+
 /// A visible body participating in a pick query.
 pub struct PickBody<'a> {
     /// Owning document id.
@@ -73,6 +80,32 @@ pub struct EdgeHit {
     pub edge: u32,
     /// Cursor-to-edge distance in device pixels.
     pub distance: f32,
+    /// Depth of the closest edge point along the cursor ray.
+    pub t: f32,
+    /// Closest point on the projected edge, in viewport pixels.
+    pub screen: Vec2,
+    /// Perspective-correct world position of that closest point.
+    pub world: Vec3,
+}
+
+/// Rejects an edge candidate that is hidden behind a face.
+///
+/// Depths are compared along a single ray cast through the edge's closest
+/// screen point, so perspective cannot skew the comparison the way two
+/// different rays would.
+pub fn edge_wins_over_face(
+    bodies: &[PickBody<'_>],
+    camera: &OrbitCamera,
+    edge: Option<EdgeHit>,
+    scene_diagonal: f32,
+) -> Option<EdgeHit> {
+    let edge = edge?;
+    let (origin, ray) = camera.unproject_ray(edge.screen);
+    let edge_t = (edge.world - origin).dot(ray);
+    let epsilon = scene_diagonal.max(1.0e-4) * EDGE_OCCLUSION_EPSILON_FRACTION;
+    pick_face(bodies, origin, ray)
+        .is_none_or(|face| edge_t <= face.t + epsilon)
+        .then_some(edge)
 }
 
 /// Fits an infinite line through an attributed edge polyline.
@@ -119,17 +152,25 @@ pub fn pick_edge(
     threshold: f32,
 ) -> Option<EdgeHit> {
     let mut best: Option<EdgeHit> = None;
+    let (ray_origin, ray) = camera.unproject_ray(cursor);
     for body in bodies {
         for (edge_index, edge) in body.mesh.edges.iter().enumerate() {
             for segment in edge.points.windows(2) {
-                let a = camera.project(body.pose.transform_point3(Vec3::from(segment[0])));
-                let b = camera.project(body.pose.transform_point3(Vec3::from(segment[1])));
-                let distance = point_segment_distance(cursor, a, b);
+                let world_a = body.pose.transform_point3(Vec3::from(segment[0]));
+                let world_b = body.pose.transform_point3(Vec3::from(segment[1]));
+                let (a, w_a) = camera.project_with_w(world_a);
+                let (b, w_b) = camera.project_with_w(world_b);
+                let (distance, screen_t) = point_segment_distance_and_t(cursor, a, b);
                 if distance <= threshold && best.is_none_or(|current| distance < current.distance) {
+                    let world_t = perspective_correct_t(screen_t, w_a, w_b);
+                    let closest = world_a.lerp(world_b, world_t);
                     best = Some(EdgeHit {
                         body: body.id,
                         edge: edge_index as u32,
                         distance,
+                        t: (closest - ray_origin).dot(ray),
+                        screen: a + (b - a) * screen_t,
+                        world: closest,
                     });
                 }
             }
@@ -138,14 +179,24 @@ pub fn pick_edge(
     best
 }
 
-fn point_segment_distance(point: Vec2, a: Vec2, b: Vec2) -> f32 {
+/// Converts a screen-space interpolation parameter along a projected segment
+/// into the corresponding world-space parameter (perspective-correct).
+fn perspective_correct_t(screen_t: f32, w_a: f32, w_b: f32) -> f32 {
+    let denominator = (1.0 - screen_t) * w_b + screen_t * w_a;
+    if denominator.abs() <= f32::EPSILON {
+        return screen_t;
+    }
+    (screen_t * w_a / denominator).clamp(0.0, 1.0)
+}
+
+fn point_segment_distance_and_t(point: Vec2, a: Vec2, b: Vec2) -> (f32, f32) {
     let segment = b - a;
     let length_squared = segment.length_squared();
     if length_squared <= f32::EPSILON {
-        return point.distance(a);
+        return (point.distance(a), 0.0);
     }
     let t = ((point - a).dot(segment) / length_squared).clamp(0.0, 1.0);
-    point.distance(a + segment * t)
+    (point.distance(a + segment * t), t)
 }
 
 #[cfg(test)]
@@ -218,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn edge_pick_respects_six_pixel_threshold() {
+    fn edge_pick_respects_eight_pixel_threshold() {
         let camera = OrbitCamera::new(Vec3::ZERO, 10.0, Vec2::new(800.0, 600.0));
         let mut mesh = BodyMesh::default();
         mesh.edges.push(crate::kernel::EdgePolyline {
@@ -237,8 +288,61 @@ mod tests {
         let midpoint = (a + b) * 0.5;
         let direction = (b - a).normalize();
         let normal = Vec2::new(-direction.y, direction.x);
-        assert!(pick_edge(&bodies, &camera, midpoint + normal * 5.5, 6.0).is_some());
-        assert!(pick_edge(&bodies, &camera, midpoint + normal * 6.5, 6.0).is_none());
+        assert!(
+            pick_edge(
+                &bodies,
+                &camera,
+                midpoint + normal * (EDGE_PICK_THRESHOLD_PX - 0.5),
+                EDGE_PICK_THRESHOLD_PX,
+            )
+            .is_some()
+        );
+        assert!(
+            pick_edge(
+                &bodies,
+                &camera,
+                midpoint + normal * (EDGE_PICK_THRESHOLD_PX + 0.5),
+                EDGE_PICK_THRESHOLD_PX,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn edge_priority_rejects_occluded_edges_and_preserves_faces_without_edges() {
+        let camera = OrbitCamera::new(Vec3::ZERO, 10.0, Vec2::new(800.0, 600.0));
+        let mesh = tessellate(&Shape::cube(2.0).unwrap(), 0.1);
+        let shape = Shape::cube(2.0).unwrap();
+        let bodies = [PickBody {
+            id: BodyId(1),
+            mesh: &mesh,
+            shape: &shape,
+            pose: Mat4::IDENTITY,
+        }];
+        let (origin, ray) = camera.unproject_ray(Vec2::new(400.0, 300.0));
+        let front = pick_face(&bodies, origin, ray).expect("cube under cursor");
+        let front_point = origin + ray * front.t;
+        let hit = |world: Vec3| EdgeHit {
+            body: BodyId(1),
+            edge: 2,
+            distance: EDGE_PICK_THRESHOLD_PX - 1.0,
+            t: (world - origin).dot(ray),
+            screen: camera.project(world),
+            world,
+        };
+        // A point on the visible surface survives the occlusion test.
+        let visible = hit(front_point);
+        assert_eq!(
+            edge_wins_over_face(&bodies, &camera, Some(visible), 10.0).map(|h| h.edge),
+            Some(2)
+        );
+        // The same screen position but on the cube's far side is rejected.
+        let hidden = hit(front_point + ray * 2.0);
+        assert!(edge_wins_over_face(&bodies, &camera, Some(hidden), 10.0).is_none());
+        // No candidate stays no candidate.
+        assert!(edge_wins_over_face(&bodies, &camera, None, 10.0).is_none());
+        // Without any occluder every candidate survives.
+        assert!(edge_wins_over_face(&[], &camera, Some(hidden), 10.0).is_some());
     }
 
     #[test]

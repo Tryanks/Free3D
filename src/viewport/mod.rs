@@ -32,7 +32,10 @@ use crate::{
     history::{HoleCut, HoleKind, edge_ref, face_ref},
     kernel::{BodyMesh, tessellate},
     nav::{GestureKind, NavAction, NavPreset, resolve, scroll_gesture},
-    pick::{FaceHit, PickBody, fit_straight_edge, pick_all, pick_edge, pick_face},
+    pick::{
+        EDGE_PICK_THRESHOLD_PX, EdgeHit, FaceHit, PickBody, edge_wins_over_face, fit_straight_edge,
+        pick_all, pick_edge, pick_face,
+    },
     saved_views::SavedView,
     sketch::{
         Profile, Sketch, SketchEntity, SketchId, SketchItem, SketchPlane, arc_center_radius,
@@ -808,6 +811,7 @@ pub struct Viewport {
     uploaded_epoch: u64,
     retessellate_only: Option<Vec<BodyId>>,
     hovered: Option<SelItem>,
+    hovered_edge: Option<(BodyId, u32)>,
     pick_popup: Option<PickPopup>,
     select_through: bool,
     camera: OrbitCamera,
@@ -906,6 +910,7 @@ impl Viewport {
             uploaded_epoch: u64::MAX,
             retessellate_only: None,
             hovered: None,
+            hovered_edge: None,
             pick_popup: None,
             select_through: false,
             camera: OrbitCamera::new(Vec3::new(0.0, 0.0, 25.0), 135.0, Vec2::new(1440.0, 900.0)),
@@ -998,6 +1003,7 @@ impl Viewport {
                 viewport.analysis,
                 viewport.visualize,
                 viewport.hovered,
+                viewport.hovered_edge,
                 &selection,
                 gizmo,
                 extrude_arrow,
@@ -1919,7 +1925,7 @@ impl Viewport {
             .sketches
             .iter()
             .find(|sketch| sketch.id == interaction.id)?;
-        let threshold = 6.0 * self.device_scale.max(1.0);
+        let threshold = EDGE_PICK_THRESHOLD_PX * self.device_scale.max(1.0);
         sketch
             .entities
             .iter()
@@ -3368,7 +3374,7 @@ impl Viewport {
 
     fn sketch_reference_at(&self, pointer: Vec2, cx: &Context<Self>) -> Option<SelItem> {
         let document = self.document.read(cx);
-        let threshold = 6.0 * self.device_scale.max(1.0);
+        let threshold = EDGE_PICK_THRESHOLD_PX * self.device_scale.max(1.0);
         for sketch in document
             .sketches
             .iter()
@@ -3534,7 +3540,12 @@ impl Viewport {
         {
             return Some(axis);
         }
-        let hit = pick_edge(&self.pick_bodies(), &self.camera, pointer, 6.0)?;
+        let hit = pick_edge(
+            &self.pick_bodies(),
+            &self.camera,
+            pointer,
+            EDGE_PICK_THRESHOLD_PX * self.device_scale.max(1.0),
+        )?;
         self.axis_from_item(SelItem::Edge(hit.body, hit.edge), cx)
     }
 
@@ -5869,6 +5880,20 @@ impl Viewport {
             .map(|candidate| candidate.item)
     }
 
+    fn edge_hit_at(&self, pointer: Vec2) -> Option<EdgeHit> {
+        let bodies = self.pick_bodies();
+        let edge = pick_edge(
+            &bodies,
+            &self.camera,
+            pointer,
+            EDGE_PICK_THRESHOLD_PX * self.device_scale.max(1.0),
+        );
+        let diagonal = self
+            .scene_bounds()
+            .map_or(0.0, |(minimum, maximum)| minimum.distance(maximum));
+        edge_wins_over_face(&bodies, &self.camera, edge, diagonal)
+    }
+
     fn pick_candidates(
         &self,
         pointer: Vec2,
@@ -5878,6 +5903,32 @@ impl Viewport {
         let bodies = self.pick_bodies();
         let (origin, ray) = self.camera.unproject_ray(pointer);
         let faces = nearest_face_per_body(&pick_all(&bodies, origin, ray));
+        let diagonal = self
+            .scene_bounds()
+            .map_or(0.0, |(minimum, maximum)| minimum.distance(maximum));
+        let edge = (!double_click && matches!(filter, SelectionFilter::Auto))
+            .then(|| {
+                pick_edge(
+                    &bodies,
+                    &self.camera,
+                    pointer,
+                    EDGE_PICK_THRESHOLD_PX * self.device_scale.max(1.0),
+                )
+            })
+            .flatten()
+            .or_else(|| {
+                matches!(filter, SelectionFilter::Edge)
+                    .then(|| {
+                        pick_edge(
+                            &bodies,
+                            &self.camera,
+                            pointer,
+                            EDGE_PICK_THRESHOLD_PX * self.device_scale.max(1.0),
+                        )
+                    })
+                    .flatten()
+            });
+        let edge = edge_wins_over_face(&bodies, &self.camera, edge, diagonal);
         let mut candidates: Vec<_> = match (filter, double_click) {
             (SelectionFilter::Auto, true) | (SelectionFilter::Body, _) => faces
                 .iter()
@@ -5897,26 +5948,21 @@ impl Viewport {
         };
         match filter {
             SelectionFilter::Auto if !double_click => {
-                if let Some(hit) = pick_edge(&bodies, &self.camera, pointer, 6.0) {
-                    let t = faces
-                        .iter()
-                        .find(|face| face.body == hit.body)
-                        .or_else(|| faces.first())
-                        .map_or(0.0, |face| face.t);
+                if let Some(hit) = edge {
                     candidates.insert(
                         0,
                         PickCandidate {
                             item: SelItem::Edge(hit.body, hit.edge),
-                            t,
+                            t: hit.t,
                         },
                     );
                 }
             }
             SelectionFilter::Edge => {
-                if let Some(hit) = pick_edge(&bodies, &self.camera, pointer, 6.0) {
+                if let Some(hit) = edge {
                     candidates.push(PickCandidate {
                         item: SelItem::Edge(hit.body, hit.edge),
-                        t: 0.0,
+                        t: hit.t,
                     });
                 }
             }
@@ -5932,6 +5978,12 @@ impl Viewport {
         filter: SelectionFilter,
     ) -> (Vec<PickCandidate>, bool) {
         let candidates = self.pick_candidates(pointer, double_click, filter);
+        if candidates
+            .first()
+            .is_some_and(|candidate| matches!(candidate.item, SelItem::Edge(_, _)))
+        {
+            return (candidates.first().copied().into_iter().collect(), false);
+        }
         let edge_and_face = candidates
             .iter()
             .any(|candidate| matches!(candidate.item, SelItem::Edge(_, _)))
@@ -6207,6 +6259,7 @@ impl Viewport {
         window.focus(&self.focus_handle, cx);
         if event.button == MouseButton::Left && self.pick_popup.take().is_some() {
             self.hovered = None;
+            self.hovered_edge = None;
             self.changed(window, cx);
             return;
         }
@@ -6544,7 +6597,12 @@ impl Viewport {
                     position: pointer + Vec2::new(12.0, 12.0),
                     shift,
                 });
-                self.hovered = all_candidates.first().map(|candidate| candidate.item);
+                let first = all_candidates.first().map(|candidate| candidate.item);
+                self.hovered_edge = first.and_then(|item| match item {
+                    SelItem::Edge(body, edge) => Some((body, edge)),
+                    _ => None,
+                });
+                self.hovered = first.filter(|item| !matches!(item, SelItem::Edge(_, _)));
                 self.changed(window, cx);
                 return;
             }
@@ -6567,6 +6625,7 @@ impl Viewport {
                     active: false,
                 });
                 self.hovered = None;
+                self.hovered_edge = None;
                 self.changed(window, cx);
                 return;
             }
@@ -6872,8 +6931,10 @@ impl Viewport {
                             Some((format!("r {radius:.1}"), pointer + Vec2::new(14.0, -22.0)));
                     }
                     self.hovered = None;
+                    self.hovered_edge = None;
                     self.sync_sketch_gpu(cx);
                 } else {
+                    self.hovered_edge = None;
                     self.hovered = self
                         .sketch_entity_at(pointer, cx)
                         .or_else(|| self.profile_at(pointer, cx));
@@ -6970,11 +7031,21 @@ impl Viewport {
                     return;
                 }
                 let filter = self.document.read(cx).selection.filter;
-                let hovered = self
-                    .construction_plane_at(pointer, cx)
-                    .or_else(|| self.item_at(pointer, false, filter));
-                if hovered != self.hovered {
+                let direct = self.construction_plane_at(pointer, cx);
+                let hovered_edge = (direct.is_none()
+                    && matches!(filter, SelectionFilter::Auto | SelectionFilter::Edge))
+                .then(|| self.edge_hit_at(pointer))
+                .flatten()
+                .map(|hit| (hit.body, hit.edge));
+                let hovered = direct.or_else(|| {
+                    hovered_edge
+                        .is_none()
+                        .then(|| self.item_at(pointer, false, filter))
+                        .flatten()
+                });
+                if hovered != self.hovered || hovered_edge != self.hovered_edge {
                     self.hovered = hovered;
+                    self.hovered_edge = hovered_edge;
                     self.changed(window, cx);
                 }
                 return;
@@ -8275,6 +8346,7 @@ impl Viewport {
         let key = event.keystroke.key.as_str();
         if key.eq_ignore_ascii_case("escape") && self.pick_popup.take().is_some() {
             self.hovered = None;
+            self.hovered_edge = None;
             self.changed(window, cx);
             cx.stop_propagation();
             return;
@@ -8287,6 +8359,7 @@ impl Viewport {
             self.select_through = !self.select_through;
             self.pick_popup = None;
             self.hovered = None;
+            self.hovered_edge = None;
             self.changed(window, cx);
             cx.stop_propagation();
             return;
@@ -8556,6 +8629,7 @@ impl Viewport {
             self.analysis,
             self.visualize,
             self.hovered,
+            self.hovered_edge,
             &selection,
             gizmo,
             extrude_arrow,

@@ -160,11 +160,20 @@ impl OrbitCamera {
 
     /// Projects a world point to viewport pixels.
     pub fn project(&self, world: Vec3) -> Vec2 {
+        self.project_with_w(world).0
+    }
+
+    /// Projects a world point to viewport pixels, also returning the clip-space
+    /// `w` needed for perspective-correct interpolation along segments.
+    pub fn project_with_w(&self, world: Vec3) -> (Vec2, f32) {
         let clip = self.view_projection() * world.extend(1.0);
         let ndc = clip.truncate() / clip.w;
-        Vec2::new(
-            (ndc.x + 1.0) * 0.5 * self.viewport_size.x,
-            (1.0 - ndc.y) * 0.5 * self.viewport_size.y,
+        (
+            Vec2::new(
+                (ndc.x + 1.0) * 0.5 * self.viewport_size.x,
+                (1.0 - ndc.y) * 0.5 * self.viewport_size.y,
+            ),
+            clip.w,
         )
     }
 
