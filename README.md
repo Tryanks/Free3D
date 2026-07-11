@@ -1,56 +1,65 @@
 # Free3D
 
-An open-source direct-modeling CAD application inspired by Shapr3D's interaction design, written in Rust:
+**A free, open-source 3D CAD app with the direct-modeling feel of Shapr3D.**
 
-- **UI framework**: [gpui](https://github.com/zed-industries/zed) (the GPU-accelerated UI framework behind the Zed editor, used as a git dependency)
-- **Geometry kernel**: OpenCASCADE (OCCT 7.8.1) through an in-house binding layer (`crates/occt-bridge` cxx bridge + `crates/occt` safe API, statically compiled via occt-sys); every OCCT exception is converted into a `Result`
-- **Viewport rendering**: wgpu offscreen rendering (BGRA readback → gpui `RenderImage`), MSAA 4x, redraws only during interaction
+Select a face and pull it. Drag an edge to round it. Free3D is a desktop CAD application for people who want to design real, manufacturable parts without wrestling with a traditional CAD interface — and without a subscription.
 
-All icons and artwork are original; this project emulates interaction patterns, not any copyrighted assets. The UI is localized in English (default) and 简体中文, auto-detected from the system language with a manual override in Settings. `FREE3D_LANG=zh-CN|en` also works for headless runs.
+![Free3D modeling workspace](docs/screenshot.png)
 
-## Build & Run
+## What it does
+
+- **Model by direct manipulation.** Click a face and an arrow appears — drag out to add material, push in to cut. Drag an edge outward for a fillet, inward for a chamfer. Type a number at any time for an exact value.
+- **Real B-rep geometry, not meshes.** Free3D is built on the OpenCASCADE kernel, the same class of exact geometry used by professional CAD. Your parts have true faces, edges, and dimensions.
+- **Full workflow in one app.** Sketching with constraints, solid and surface modeling, assemblies with joints, measurement and interference checks, and 2D drawings with dimensions and a parts list — exported to SVG/PDF.
+- **Works with your other tools.** Import and export STEP and IGES; import STL/OBJ/DXF; export OBJ, glTF, 3MF, and STL for printing and rendering.
+- **A home for your designs.** A design library with thumbnails opens on launch; projects are single `.f3d` files you can back up, sync, or share however you like. Autosave and crash recovery are built in.
+- **Made for the desktop.** GPU-accelerated interface, touchpad-first navigation (two-finger orbit, pinch to zoom), light and dark themes, English and 简体中文.
+
+## Why Free3D
+
+Shapr3D showed how approachable direct modeling can be. FreeCAD showed how much a community-owned CAD tool matters. Free3D aims at the intersection: the interaction design of the former, the freedom of the latter — local files, no account, MIT-licensed code.
+
+## Getting started
+
+Free3D targets all desktop platforms (macOS, Windows, Linux). It is currently developed and tested primarily on macOS — if you hit a problem elsewhere, please [open an issue](../../issues).
+
+**Prerequisites:** [Rust](https://rustup.rs) 1.95+, CMake 3.24+, and a C++ toolchain (Xcode Command Line Tools on macOS, MSVC on Windows, gcc/clang on Linux).
 
 ```sh
-# Requirements: Rust ≥1.95, CMake (brew install cmake), Xcode CLT
-cargo run
+git clone https://github.com/Tryanks/Free3D.git
+cd Free3D
+cargo run --release
 ```
 
-The first build compiles OCCT from source (about 15 minutes); incremental builds are fast afterwards.
-`.cargo/config.toml` ships with `CMAKE_POLICY_VERSION_MINIMUM=3.5` (required for CMake 4.x to accept OCCT's older build scripts).
+The first build compiles the OpenCASCADE kernel from source and takes a while (about 15 minutes); after that, builds are fast.
 
-## Interaction (default preset, touchpad-first)
+**First steps:**
 
-| Action | Touchpad | Mouse |
+1. Click **New Design** in the library.
+2. Open **Add** in the left rail and place a Box.
+3. Click a face — drag the arrow to pull or cut. Type a number for an exact distance.
+4. Click an edge and drag away from the body to round it.
+5. ⌘S / Ctrl+S saves the design to your library.
+
+| Navigate | Touchpad | Mouse |
 |---|---|---|
 | Orbit | Two-finger drag | Right-button drag |
 | Pan | Shift + two-finger drag | Middle-button drag |
-| Zoom | Pinch (toward cursor) | Scroll wheel (toward cursor) |
+| Zoom | Pinch | Scroll wheel |
 
-⌘1 default isometric view, ⌘2–7 the six standard views (animated transitions); the **orientation cube** in the top-right corner snaps the camera to faces/edges/corners, rotates on drag, and resets on double-click. ⌘Z / ⇧⌘Z undo/redo. Tab cycles the selection filter (body/face/edge); Esc clears the selection. Navigation presets and light/dark themes are switchable in Settings.
+## Getting help
 
-## Feature Overview
+- **Questions and bugs:** [GitHub Issues](../../issues)
+- **Ideas and feature requests:** open an issue and tell us what you're trying to build
 
-- **Project home**: a searchable design library with embedded viewport thumbnails, recent projects, and rename/duplicate/Trash actions
-- **Direct modeling**: select a face and drag to push/pull (pull = union / push = subtract with automatic booleans; a badge switches New Body/Union/Subtract/Intersect); move/rotate gizmo (live preview, Shift 5° snapping); fillet/chamfer by dragging edges; shell; offset face; explicit booleans
-- **Sketching & features**: full 2D geometry with trim/extend/break and a constraint solver; closed profiles extrude/revolve/sweep/loft; holes, threads, variable-radius fillets and other history features can reference named variables
-- **Surfaces**: open-profile surface extrude/revolve/sweep/loft, plus patch, sew, thicken, and delete-face healing
-- **Transforms**: move/rotate/scale/mirror/linear & circular patterns/align/split body
-- **Parametrics & recovery**: history steps can be edited, suppressed, deleted, and replayed to rebuild; feature parameters accept named variables; native `.f3d` format, autosave, and crash recovery
-- **Inspection & views**: volume/centroid/moments of inertia, interference and geometric validity checks, X-Ray/section interference highlighting; isolate, measure, saved views, FOV, and an adaptive grid
-- **Assemblies**: same-document component grounding, five joint kinds, numeric driving, continuous exploded view
-- **Drawings**: multi-sheet HLR views, section/detail views, linear/radius/diameter/angle dimensions, centerlines, title block, live BOM with associative balloons, SVG/PDF export
-- **Visualization**: per-entity PBR-lite materials and colors
-- **Selection**: click/double-click for bodies, Shift multi-select, box select (left→right window, right→left crossing), hover highlighting — all BRep-based picking
-- **Adaptive menu**: tool recommendations follow the current selection (Shapr3D's signature interaction)
-- **Files**: STEP/IGES/STL/DXF and other common CAD/mesh exchange formats, OBJ/3MF/glTF export; command search palette
-- **Type a number while dragging** for exact values (expressions like 12+34 and 50/2 are supported)
+## Project status
 
-## Developer Notes
+Free3D is young and moving fast. The core modeling workflow is usable today; expect rough edges, and keep backups of important work. The `.f3d` format may still evolve.
 
-- `FREE3D_DUMP_FRAME=/path.png` writes every viewport frame to disk (headless render verification without screen-recording permissions)
-- `FREE3D_DEMO_SCENE=1..9` preset demo scenes; `6` shows a drawing with BOM/balloons, `9` shows an assembly
-- `FREE3D_IO_CHECK=1` headless STEP round-trip check
+## Contributing
+
+Contributions are very welcome — code, bug reports, translations, and design feedback alike. Start with the [contributing guide](CONTRIBUTING.md). This project follows a [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-[MIT](LICENSE). Note that OCCT is LGPL-2.1 (with exception); distributing statically linked builds must comply with its terms.
+Free3D is [MIT licensed](LICENSE). It statically links [OpenCASCADE](https://www.opencascade.com/open-cascade-technology/), which is licensed under LGPL-2.1 with exception; comply with its terms when distributing binaries.
