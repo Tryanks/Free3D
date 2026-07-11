@@ -1,0 +1,4 @@
+[env]
+# OCCT 7.8.1 (vendored by occt-sys) uses cmake_minimum_required < 3.5,
+# which CMake 4.x rejects without this compatibility override.
+CMAKE_POLICY_VERSION_MINIMUM = "3.5"

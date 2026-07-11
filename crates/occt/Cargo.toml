@@ -1,0 +1,12 @@
+[package]
+name = "occt"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cxx = "=1.0.197"
+glam = "0.30"
+occt-bridge = { path = "../occt-bridge" }
+
+[dev-dependencies]
+tempfile = "3"

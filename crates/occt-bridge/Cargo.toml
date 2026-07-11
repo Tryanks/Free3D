@@ -1,0 +1,12 @@
+[package]
+name = "occt-bridge"
+version = "0.1.0"
+edition = "2024"
+links = "free3d_occt_bridge"
+
+[dependencies]
+cxx = "=1.0.197"
+
+[build-dependencies]
+cxx-build = "=1.0.197"
+occt-sys = "0.6"
