@@ -114,6 +114,11 @@ pub fn translate_for(language: Lang, en: &'static str) -> &'static str {
     translate(language, en)
 }
 
+/// Translates a template for an explicit language and replaces its placeholder.
+pub fn replace_for(language: Lang, key: &'static str, arg: &str) -> String {
+    replace_one(translate_for(language, key), arg)
+}
+
 /// Translates a template and replaces its first `{}` placeholder.
 pub fn tr1(key: &'static str, arg: &str) -> String {
     replace_one(t(key), arg)
@@ -133,9 +138,26 @@ fn zh_lookup() -> &'static HashMap<&'static str, &'static str> {
 }
 
 static ZH_TRANSLATIONS: &[(&str, &str)] = &[
+    ("Free3D", "Free3D"),
     ("Auto", "自动"),
     ("Language", "语言"),
     ("Home", "主页"),
+    ("Designs", "设计"),
+    ("Design", "设计"),
+    ("New Design", "新建设计"),
+    ("Search designs…", "搜索设计…"),
+    ("Your designs will appear here.", "你的设计将显示在这里。"),
+    ("Rename", "重命名"),
+    ("Duplicate", "创建副本"),
+    ("Delete", "删除"),
+    ("Reveal in Finder", "在访达中显示"),
+    ("Just now", "刚刚"),
+    ("{} minute ago", "{} 分钟前"),
+    ("{} minutes ago", "{} 分钟前"),
+    ("{} hour ago", "{} 小时前"),
+    ("{} hours ago", "{} 小时前"),
+    ("{} day ago", "{} 天前"),
+    ("{} days ago", "{} 天前"),
     ("Sync", "同步"),
     ("Share", "分享"),
     ("Settings", "设置"),
@@ -149,6 +171,10 @@ static ZH_TRANSLATIONS: &[(&str, &str)] = &[
     ),
     ("Files", "文件"),
     ("Import", "导入"),
+    (
+        "Import STEP / IGES / STL / OBJ / DXF",
+        "导入 STEP / IGES / STL / OBJ / DXF",
+    ),
     ("Export", "导出"),
     ("Recent Files", "最近打开"),
     ("Project", "工程"),

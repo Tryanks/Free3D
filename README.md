@@ -30,6 +30,7 @@ The first build compiles OCCT from source (about 15 minutes); incremental builds
 
 ## Feature Overview
 
+- **Project home**: a searchable design library with embedded viewport thumbnails, recent projects, and rename/duplicate/Trash actions
 - **Direct modeling**: select a face and drag to push/pull (pull = union / push = subtract with automatic booleans; a badge switches New Body/Union/Subtract/Intersect); move/rotate gizmo (live preview, Shift 5° snapping); fillet/chamfer by dragging edges; shell; offset face; explicit booleans
 - **Sketching & features**: full 2D geometry with trim/extend/break and a constraint solver; closed profiles extrude/revolve/sweep/loft; holes, threads, variable-radius fillets and other history features can reference named variables
 - **Surfaces**: open-profile surface extrude/revolve/sweep/loft, plus patch, sew, thicken, and delete-face healing

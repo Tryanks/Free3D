@@ -42,7 +42,7 @@ fn left_pill(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
         .child(
             ui::icon_button(theme, "home", "home", false)
                 .tooltip(ui::tip(theme, crate::i18n::t("Home"), None))
-                .on_click(cx.listener(|_, _, _window, _cx| {})),
+                .on_click(cx.listener(|this, _, window, cx| this.go_home(window, cx))),
         )
         .child(
             ui::icon_button(theme, "sync", "sync", false)

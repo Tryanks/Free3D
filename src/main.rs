@@ -9,6 +9,7 @@ mod document;
 mod drawing;
 mod gizmo;
 mod history;
+mod home;
 mod i18n;
 mod inspection;
 mod io_formats;

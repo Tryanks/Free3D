@@ -41,8 +41,9 @@ pub(crate) fn settings_dir() -> PathBuf {
     if let Some(path) = std::env::var_os("FREE3D_SETTINGS_DIR") {
         return PathBuf::from(path);
     }
-    let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("."), PathBuf::from);
-    home.join("Library/Application Support/Free3D")
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("Free3D")
 }
 
 fn settings_path() -> PathBuf {

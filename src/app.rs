@@ -55,6 +55,16 @@ pub enum Space {
     Drawing,
 }
 
+/// Full-window application destination.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum AppScreen {
+    /// Project design library.
+    #[default]
+    Home,
+    /// Interactive modeling workspace.
+    Workspace,
+}
+
 /// Active tool in the drawing workspace.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DrawingTool {
@@ -132,6 +142,8 @@ pub enum InspectionCard {
 
 /// Root view: the full-window viewport with floating chrome layered above it.
 pub struct Free3dApp {
+    /// Active full-window destination.
+    pub screen: AppScreen,
     /// Active top-level workspace.
     pub space: Space,
     /// Shared editable document, also held by the viewport.
@@ -144,6 +156,20 @@ pub struct Free3dApp {
     pub saved_revision: u64,
     /// Most-recently used native project paths, newest first.
     pub recent_files: Vec<std::path::PathBuf>,
+    /// Projects currently visible to the home library.
+    pub home_designs: Vec<crate::home::DesignEntry>,
+    /// Live home-library search text.
+    pub home_query: String,
+    /// Keyboard focus for search and inline rename.
+    pub(crate) home_focus: FocusHandle,
+    /// Card whose action menu is open.
+    pub(crate) home_menu_path: Option<std::path::PathBuf>,
+    /// Card currently being renamed.
+    pub(crate) home_rename_path: Option<std::path::PathBuf>,
+    /// Inline rename text.
+    pub(crate) home_rename_buffer: String,
+    /// Lazily decoded project previews, including cached failures.
+    pub(crate) home_thumbnails: HashMap<std::path::PathBuf, Option<Arc<gpui::RenderImage>>>,
     /// Active design tokens.
     pub theme: Theme,
     /// Currently active modeling tool, if any (stub selection state).
@@ -248,7 +274,21 @@ pub struct Free3dApp {
 impl Free3dApp {
     /// Creates the root, its viewport child and default chrome state.
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let document = cx.new(|_| startup_document());
+        let cli_path = std::env::args_os()
+            .skip(1)
+            .map(std::path::PathBuf::from)
+            .find(|path| {
+                path.extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("f3d"))
+            });
+        let demo = std::env::var_os("FREE3D_DEMO_SCENE").is_some();
+        let startup_path = cli_path.filter(|path| path.is_file());
+        let startup = startup_path
+            .as_deref()
+            .and_then(|path| Document::load_from(path).ok())
+            .unwrap_or_else(startup_document);
+        let document = cx.new(|_| startup);
         let settings = crate::settings::load();
         // `FREE3D_THEME=light|dark` forces the startup appearance for VM
         // verification; otherwise the default (light) theme is used.
@@ -273,13 +313,35 @@ impl Free3dApp {
             }
         });
         let demo_section = std::env::var("FREE3D_DEMO_SCENE").is_ok_and(|scene| scene == "5");
+        let mut recent_files = load_recent_files();
+        if let Some(path) = &startup_path {
+            recent_files.retain(|recent| recent != path);
+            recent_files.insert(0, path.clone());
+            recent_files.truncate(8);
+            if let Err(error) = save_recent_files(&recent_files) {
+                eprintln!("failed to save recent-file list: {error}");
+            }
+        }
+        let home_designs = crate::home::list_designs(&recent_files);
         Self {
+            screen: if demo || startup_path.is_some() {
+                AppScreen::Workspace
+            } else {
+                AppScreen::Home
+            },
             space: Space::Modeling,
             document,
             viewport,
-            project_path: None,
+            project_path: startup_path,
             saved_revision,
-            recent_files: load_recent_files(),
+            recent_files,
+            home_designs,
+            home_query: String::new(),
+            home_focus: cx.focus_handle(),
+            home_menu_path: None,
+            home_rename_path: None,
+            home_rename_buffer: String::new(),
+            home_thumbnails: HashMap::new(),
             theme,
             active_tool: None,
             inspection_card: None,
@@ -1694,11 +1756,10 @@ impl Free3dApp {
             eprintln!("screenshot: renderer returned an invalid frame size");
             return;
         };
-        let Some(home) = std::env::var_os("HOME") else {
-            eprintln!("screenshot: HOME is not set");
+        let Some(desktop) = dirs::desktop_dir().or_else(dirs::home_dir) else {
+            eprintln!("screenshot: no desktop or home directory");
             return;
         };
-        let desktop = std::path::Path::new(&home).join("Desktop");
         let path = (1..)
             .map(|n| desktop.join(format!("Free3D-{}-{n}.png", crate::i18n::t("Screenshot"))))
             .find(|candidate| !candidate.exists())
@@ -1762,7 +1823,7 @@ impl Free3dApp {
             files: true,
             directories: false,
             multiple: true,
-            prompt: Some("Import STEP / STL / IGES / DXF (.step .stp .stl .iges .igs .dxf)".into()),
+            prompt: Some(crate::i18n::t("Import STEP / IGES / STL / OBJ / DXF").into()),
         });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = prompt.await else {
@@ -1776,7 +1837,7 @@ impl Free3dApp {
                             .and_then(|extension| extension.to_str())
                             .map(str::to_ascii_lowercase)
                             .as_deref(),
-                        Some("step" | "stp" | "stl" | "iges" | "igs" | "dxf")
+                        Some("step" | "stp" | "stl" | "obj" | "iges" | "igs" | "dxf")
                     )
                 })
                 .collect();
@@ -1804,12 +1865,19 @@ impl Free3dApp {
                                 .map(str::to_ascii_lowercase)
                                 .as_deref()
                             {
-                                Some("stl") => Shape::read_stl(&path),
-                                Some("iges" | "igs") => Shape::read_iges(&path),
-                                _ => Shape::read_step(&path),
+                                Some("stl") => {
+                                    Shape::read_stl(&path).map_err(|error| error.to_string())
+                                }
+                                Some("obj") => crate::io_formats::read_obj_shape(&path),
+                                Some("iges" | "igs") => {
+                                    Shape::read_iges(&path).map_err(|error| error.to_string())
+                                }
+                                _ => Shape::read_step(&path).map_err(|error| error.to_string()),
                             };
                             loaded
-                                .and_then(|shape| shape.to_brep_data())
+                                .and_then(|shape| {
+                                    shape.to_brep_data().map_err(|error| error.to_string())
+                                })
                                 .map(|bytes| (path.clone(), stem, bytes))
                                 .map_err(|error| {
                                     format!("failed to read {}: {error}", path.display())
@@ -1942,7 +2010,12 @@ impl Free3dApp {
             .and_then(std::path::Path::file_name)
             .and_then(std::ffi::OsStr::to_str)
             .unwrap_or(crate::i18n::t("Untitled.f3d"));
-        let prompt = cx.prompt_for_new_path(std::path::Path::new(""), Some(suggested));
+        let designs_dir = crate::home::designs_dir();
+        if let Err(error) = std::fs::create_dir_all(&designs_dir) {
+            eprintln!("failed to create designs folder: {error}");
+            return;
+        }
+        let prompt = cx.prompt_for_new_path(&designs_dir, Some(suggested));
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(mut path))) = prompt.await else {
                 return;
@@ -1961,6 +2034,13 @@ impl Free3dApp {
     }
 
     fn save_project_to(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        if path.parent() == Some(crate::home::designs_dir().as_path())
+            && let Err(error) = std::fs::create_dir_all(crate::home::designs_dir())
+        {
+            eprintln!("failed to create designs folder: {error}");
+            return;
+        }
+        self.capture_thumbnail(cx);
         let result = self
             .document
             .update(cx, |document, _| document.save_to(&path));
@@ -2100,8 +2180,27 @@ impl Free3dApp {
         });
         self.project_path = path;
         self.saved_revision = revision;
+        self.screen = AppScreen::Workspace;
+        self.space = Space::Modeling;
         self.active_tool = None;
         self.open_group = None;
+        self.inspection_card = None;
+        self.show_views = false;
+        self.show_command_search = false;
+        self.show_settings = false;
+        self.show_nav_presets = false;
+        self.renaming_body = None;
+        self.renaming_plane = None;
+        self.renaming_reference_image = None;
+        self.renaming_variable = None;
+        self.history_editor = None;
+        self.history_editor_subscription = None;
+        self.variable_editor = None;
+        self.variable_editor_subscription = None;
+        self.material_editor = None;
+        self.material_editor_subscription = None;
+        self.joint_editor = None;
+        self.joint_editor_subscription = None;
         self.replay_error = None;
         self.drawing_cache.clear();
         cx.notify();
@@ -2112,6 +2211,7 @@ impl Free3dApp {
         if !self.is_dirty(cx) {
             return;
         }
+        self.capture_thumbnail(cx);
         let project_path = self.project_path.as_deref();
         let result = self.document.update(cx, |document, _| {
             crate::autosave::write(document, project_path)
@@ -2191,6 +2291,209 @@ impl Free3dApp {
         if let Err(error) = save_recent_files(&self.recent_files) {
             eprintln!("failed to save recent-file list: {error}");
         }
+    }
+
+    fn capture_thumbnail(&mut self, cx: &mut Context<Self>) {
+        let thumbnail = self
+            .viewport
+            .read(cx)
+            .latest_frame()
+            .and_then(|(width, height, bytes)| crate::home::encode_thumbnail(width, height, bytes));
+        if thumbnail.is_some() {
+            self.document.update(cx, |document, _| {
+                document.thumbnail = thumbnail;
+            });
+        }
+    }
+
+    fn refresh_home(&mut self) {
+        self.home_designs = crate::home::list_designs(&self.recent_files);
+        let current: std::collections::HashSet<_> = self
+            .home_designs
+            .iter()
+            .map(|design| design.path.clone())
+            .collect();
+        self.home_thumbnails
+            .retain(|path, _| current.contains(path));
+    }
+
+    fn enter_home_now(&mut self, cx: &mut Context<Self>) {
+        self.install_document(Document::new(), None, cx);
+        self.screen = AppScreen::Home;
+        self.home_menu_path = None;
+        self.home_rename_path = None;
+        self.home_rename_buffer.clear();
+        self.refresh_home();
+        cx.notify();
+    }
+
+    /// Navigates back to the library using the same dirty-document guard as Open Recent.
+    pub fn go_home(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.is_dirty(cx) {
+            self.enter_home_now(cx);
+            return;
+        }
+        let response = window.prompt(
+            PromptLevel::Warning,
+            crate::i18n::t("Unsaved changes will be lost. Continue?"),
+            None,
+            &[crate::i18n::t("Continue"), crate::i18n::t("Cancel")],
+            cx,
+        );
+        cx.spawn_in(window, async move |this, cx| {
+            if matches!(response.await, Ok(0)) {
+                this.update(cx, |this, cx| this.enter_home_now(cx)).ok();
+            }
+        })
+        .detach();
+    }
+
+    /// Starts an empty untitled design from the library.
+    pub(crate) fn new_design(&mut self, cx: &mut Context<Self>) {
+        self.install_document(Document::new(), None, cx);
+    }
+
+    /// Starts a fresh design and invokes the workspace import flow.
+    pub(crate) fn import_from_home(&mut self, cx: &mut Context<Self>) {
+        self.install_document(Document::new(), None, cx);
+        self.import(cx);
+    }
+
+    pub(crate) fn toggle_home_menu(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        if self.home_menu_path.as_ref() == Some(&path) {
+            self.home_menu_path = None;
+        } else {
+            self.home_menu_path = Some(path);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn begin_home_rename(
+        &mut self,
+        path: std::path::PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.home_rename_buffer = path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_owned();
+        self.home_rename_path = Some(path);
+        self.home_menu_path = None;
+        window.focus(&self.home_focus, cx);
+        cx.notify();
+    }
+
+    fn commit_home_rename(&mut self, cx: &mut Context<Self>) {
+        let Some(old) = self.home_rename_path.take() else {
+            return;
+        };
+        let name = self.home_rename_buffer.trim();
+        if name.is_empty() || name.contains(['/', ':']) {
+            self.home_rename_buffer.clear();
+            cx.notify();
+            return;
+        }
+        let mut new = old.with_file_name(name);
+        new.set_extension("f3d");
+        if new != old && !new.exists() {
+            match std::fs::rename(&old, &new) {
+                Ok(()) => {
+                    crate::home::rename_recent_paths(&mut self.recent_files, &old, &new);
+                    if let Err(error) = save_recent_files(&self.recent_files) {
+                        eprintln!("failed to save recent-file list: {error}");
+                    }
+                    if let Some(thumbnail) = self.home_thumbnails.remove(&old) {
+                        self.home_thumbnails.insert(new, thumbnail);
+                    }
+                }
+                Err(error) => eprintln!("failed to rename design: {error}"),
+            }
+        }
+        self.home_rename_buffer.clear();
+        self.refresh_home();
+        cx.notify();
+    }
+
+    pub(crate) fn duplicate_design(
+        &mut self,
+        path: std::path::PathBuf,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let destination = crate::home::unique_copy_path(&path, crate::i18n::lang());
+        if let Err(error) = std::fs::copy(&path, &destination) {
+            eprintln!("failed to duplicate design: {error}");
+        } else {
+            self.remember_recent(destination);
+        }
+        self.home_menu_path = None;
+        self.refresh_home();
+        cx.notify();
+    }
+
+    pub(crate) fn trash_design(
+        &mut self,
+        path: std::path::PathBuf,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let result = move_to_trash(&path);
+        if let Err(error) = result {
+            eprintln!("failed to move design to Trash: {error}");
+        } else {
+            self.recent_files.retain(|recent| recent != &path);
+            if let Err(error) = save_recent_files(&self.recent_files) {
+                eprintln!("failed to save recent-file list: {error}");
+            }
+        }
+        self.home_menu_path = None;
+        self.refresh_home();
+        cx.notify();
+    }
+
+    pub(crate) fn reveal_design(
+        &mut self,
+        path: std::path::PathBuf,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Err(error) = opener::reveal(&path) {
+            eprintln!("failed to reveal design: {error}");
+        }
+        self.home_menu_path = None;
+        cx.notify();
+    }
+
+    /// Handles the home search field and inline file rename.
+    pub(crate) fn home_key_down(
+        &mut self,
+        event: &KeyDownEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let key = event.keystroke.key.as_str();
+        let buffer = if self.home_rename_path.is_some() {
+            &mut self.home_rename_buffer
+        } else {
+            &mut self.home_query
+        };
+        if key.eq_ignore_ascii_case("escape") {
+            self.home_rename_path = None;
+            self.home_rename_buffer.clear();
+        } else if key.eq_ignore_ascii_case("enter") && self.home_rename_path.is_some() {
+            self.commit_home_rename(cx);
+        } else if key.eq_ignore_ascii_case("backspace") {
+            buffer.pop();
+        } else if !event.keystroke.modifiers.platform
+            && !event.keystroke.modifiers.control
+            && let Some(text) = &event.keystroke.key_char
+        {
+            buffer.extend(text.chars().filter(|character| !character.is_control()));
+        }
+        cx.stop_propagation();
+        cx.notify();
     }
 
     fn primitive(&self, tool: ToolId) -> Option<PrimitiveKind> {
@@ -3278,6 +3581,25 @@ fn project_visible_bodies_with(
 
 impl Render for Free3dApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.screen == AppScreen::Home {
+            window.set_window_title("Free3D");
+            window.focus(&self.home_focus, cx);
+            self.refresh_home();
+            let query = self.home_query.trim().to_lowercase();
+            for design in self.home_designs.iter().filter(|design| {
+                query.is_empty()
+                    || design
+                        .path
+                        .file_stem()
+                        .and_then(|value| value.to_str())
+                        .is_some_and(|name| name.to_lowercase().contains(&query))
+            }) {
+                self.home_thumbnails
+                    .entry(design.path.clone())
+                    .or_insert_with(|| crate::home::decode_thumbnail(&design.path));
+            }
+            return crate::home::render(self, cx).into_any_element();
+        }
         window.set_window_title(&format!("{} — Free3D", self.project_label(cx)));
         if self.space == Space::Drawing {
             self.refresh_drawing_cache(cx);
@@ -3312,13 +3634,16 @@ impl Render for Free3dApp {
             .when(this.space == Space::Modeling, |root| {
                 root.children(ui::constraints_panel::render(this, cx))
             })
+            .into_any_element()
     }
 }
 
+fn move_to_trash(path: &std::path::Path) -> Result<(), String> {
+    trash::delete(path).map_err(|error| error.to_string())
+}
+
 fn recent_file_path() -> Option<std::path::PathBuf> {
-    std::env::var_os("HOME").map(|home| {
-        std::path::PathBuf::from(home).join("Library/Application Support/Free3D/recent.json")
-    })
+    dirs::config_dir().map(|config| config.join("Free3D/recent.json"))
 }
 
 fn load_recent_files() -> Vec<std::path::PathBuf> {

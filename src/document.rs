@@ -369,6 +369,8 @@ struct ProjectReferenceImage {
 struct ProjectFile {
     format: String,
     version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    thumbnail: Option<String>,
     bodies: Vec<ProjectBody>,
     #[serde(default)]
     joints: Vec<Joint>,
@@ -507,6 +509,8 @@ impl Selection {
 
 /// The editable model shared by root chrome and viewport entities.
 pub struct Document {
+    /// Base64-encoded PNG preview stored with the native project.
+    pub thumbnail: Option<String>,
     /// Bodies in Items-panel order.
     pub bodies: Vec<Body>,
     /// Same-document assembly relationships.
@@ -563,6 +567,7 @@ impl Document {
     /// Creates an empty document.
     pub fn new() -> Self {
         Self {
+            thumbnail: None,
             bodies: Vec::new(),
             joints: Vec::new(),
             grounded: HashSet::new(),
@@ -774,6 +779,7 @@ impl Document {
         let project = ProjectFile {
             format: "free3d".to_owned(),
             version: 1,
+            thumbnail: self.thumbnail.clone(),
             bodies,
             joints: self.joints.clone(),
             grounded: self.grounded.clone(),
@@ -846,6 +852,7 @@ impl Document {
         let project: ProjectFile = serde_json::from_slice(&bytes).map_err(|error| {
             crate::i18n::tr1("Project file JSON is corrupt: {}", &error.to_string())
         })?;
+        let thumbnail = project.thumbnail.clone();
         let bodies = project
             .bodies
             .into_iter()
@@ -897,6 +904,7 @@ impl Document {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let mut document = Self {
+            thumbnail,
             bodies,
             joints: project.joints,
             grounded: project.grounded,
@@ -2227,12 +2235,14 @@ impl Document {
             return Ok(BodyId(id.0));
         }
         let shape = match extension.as_str() {
-            "step" | "stp" => Shape::read_step(path),
-            "iges" | "igs" => Shape::read_iges(path),
-            "stl" => Shape::read_stl(path),
+            "step" | "stp" => Shape::read_step(path).map_err(|error| error.to_string()),
+            "iges" | "igs" => Shape::read_iges(path).map_err(|error| error.to_string()),
+            "stl" => Shape::read_stl(path).map_err(|error| error.to_string()),
+            "obj" => crate::io_formats::read_obj_shape(path),
             _ => {
                 return Err(
-                    "import path must end in .step, .stp, .stl, .iges, .igs, or .dxf".to_owned(),
+                    "import path must end in .step, .stp, .stl, .obj, .iges, .igs, or .dxf"
+                        .to_owned(),
                 );
             }
         }
@@ -6313,5 +6323,37 @@ mod tests {
         assert!(document.apply_thread(id, face, true, ThreadMode::Modeled, 3.0, 12.0));
         let after = document.bodies[0].shape.volume_properties().unwrap().volume;
         assert!(after < before);
+    }
+
+    #[test]
+    fn thumbnail_save_load_roundtrip_is_a_512px_png() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("thumbnail.f3d");
+        let frame = vec![120_u8; 1024 * 640 * 4];
+        let thumbnail = crate::home::encode_thumbnail(1024, 640, frame).unwrap();
+        let mut document = Document::new();
+        document.thumbnail = Some(thumbnail);
+        document.save_to(&path).unwrap();
+
+        let loaded = Document::load_from(&path).unwrap();
+        let png = BASE64.decode(loaded.thumbnail.unwrap()).unwrap();
+        let image = image::load_from_memory_with_format(&png, image::ImageFormat::Png).unwrap();
+        assert_eq!(image.width().max(image.height()), 512);
+    }
+
+    #[test]
+    fn legacy_project_without_thumbnail_still_loads() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("legacy.f3d");
+        let mut document = Document::new();
+        document.thumbnail = Some("ignored".to_owned());
+        document.save_to(&path).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let mut json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        json.as_object_mut().unwrap().remove("thumbnail");
+        std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
+
+        let loaded = Document::load_from(&path).unwrap();
+        assert!(loaded.thumbnail.is_none());
     }
 }

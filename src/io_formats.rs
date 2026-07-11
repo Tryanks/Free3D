@@ -40,6 +40,74 @@ pub(crate) fn write_obj(path: &Path, meshes: &[OcctMesh]) -> Result<(), String> 
     std::fs::write(path, output).map_err(|error| error.to_string())
 }
 
+/// Reads the common vertex/face subset of OBJ through OCCT's triangle-mesh importer.
+pub(crate) fn read_obj_shape(path: &Path) -> Result<Shape, String> {
+    let source = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let mut vertices = Vec::<[f64; 3]>::new();
+    let mut triangles = Vec::<[usize; 3]>::new();
+    for line in source.lines() {
+        let mut fields = line.split_whitespace();
+        match fields.next() {
+            Some("v") => {
+                let values: Vec<_> = fields
+                    .take(3)
+                    .map(|value| value.parse::<f64>())
+                    .collect::<Result<_, _>>()
+                    .map_err(|error| format!("invalid OBJ vertex: {error}"))?;
+                if let [x, y, z] = values.as_slice() {
+                    vertices.push([*x, *y, *z]);
+                }
+            }
+            Some("f") => {
+                let face: Vec<_> = fields
+                    .map(|field| {
+                        let index = field.split('/').next().unwrap_or_default();
+                        let raw = index
+                            .parse::<isize>()
+                            .map_err(|error| format!("invalid OBJ face: {error}"))?;
+                        let resolved = if raw < 0 {
+                            vertices.len() as isize + raw
+                        } else {
+                            raw - 1
+                        };
+                        usize::try_from(resolved)
+                            .map_err(|error| format!("invalid OBJ face: {error}"))
+                    })
+                    .collect::<Result<_, _>>()?;
+                if face.len() >= 3 && face.iter().all(|&index| index < vertices.len()) {
+                    for index in 1..face.len() - 1 {
+                        triangles.push([face[0], face[index], face[index + 1]]);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if triangles.is_empty() {
+        return Err("OBJ contains no polygon faces".to_owned());
+    }
+    let mut stl = String::from("solid free3d_obj\n");
+    for triangle in triangles {
+        stl.push_str("facet normal 0 0 0\nouter loop\n");
+        for index in triangle {
+            let [x, y, z] = vertices[index];
+            stl.push_str(&format!("vertex {x} {y} {z}\n"));
+        }
+        stl.push_str("endloop\nendfacet\n");
+    }
+    stl.push_str("endsolid free3d_obj\n");
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary =
+        std::env::temp_dir().join(format!("free3d-obj-{}-{unique}.stl", std::process::id()));
+    std::fs::write(&temporary, stl).map_err(|error| error.to_string())?;
+    let result = Shape::read_stl(&temporary).map_err(|error| error.to_string());
+    let _ = std::fs::remove_file(temporary);
+    result
+}
+
 fn mesh_binary(meshes: &[OcctMesh]) -> (Vec<u8>, Vec<(usize, usize, usize, usize)>) {
     let mut bytes = Vec::new();
     let mut views = Vec::new();
