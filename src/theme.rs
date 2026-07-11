@@ -3,7 +3,7 @@
 //! A [`Theme`] carries every colour, radius, spacing and type size the UI
 //! layer needs. Two variants ship: a clean near-white light theme (the
 //! default) and an elegant desaturated blue-gray dark counterpart. Both share
-//! one warm orange accent reserved for selection and active states. Spacing
+//! one warm orange accent reserved for chrome and sketch-space active states. Spacing
 //! follows a strict 4px grid.
 
 use gpui::{BoxShadow, Hsla, Pixels, Rgba, hsla, point, px, rgba};
@@ -102,6 +102,14 @@ pub struct Theme {
 pub struct CanvasTheme {
     /// Selection accent used for emphasized model geometry.
     pub accent: [f32; 4],
+    /// Translucent sky-blue fill for hovered model faces and bodies.
+    pub face_hover: [f32; 4],
+    /// Saturated sky-blue fill for selected model faces and bodies.
+    pub face_selected: [f32; 4],
+    /// Translucent blue ribbon used for hovered model edges.
+    pub edge_ribbon_hover: [f32; 4],
+    /// Deeper blue ribbon used for selected model edges.
+    pub edge_ribbon_selected: [f32; 4],
     /// Background gradient, top.
     pub bg_top: [f32; 4],
     /// Background gradient, bottom.
@@ -178,6 +186,10 @@ impl Theme {
             text_sm: 11.0,
             canvas: CanvasTheme {
                 accent: [1.0, 0.478, 0.184, 1.0],
+                face_hover: [0.25, 0.67, 0.91, 0.42],
+                face_selected: [0.19, 0.62, 0.89, 0.82],
+                edge_ribbon_hover: [0.31, 0.70, 0.94, 0.62],
+                edge_ribbon_selected: [0.08, 0.42, 0.76, 1.0],
                 bg_top: [0.070, 0.094, 0.125, 1.0],
                 bg_bottom: [0.035, 0.048, 0.070, 1.0],
                 grid_minor: [0.28, 0.32, 0.37, 0.16],
@@ -231,6 +243,10 @@ impl Theme {
             text_sm: 11.0,
             canvas: CanvasTheme {
                 accent: [0.949, 0.416, 0.122, 1.0],
+                face_hover: [0.31, 0.72, 0.94, 0.36],
+                face_selected: [0.18, 0.61, 0.91, 0.82],
+                edge_ribbon_hover: [0.34, 0.72, 0.94, 0.58],
+                edge_ribbon_selected: [0.06, 0.39, 0.74, 1.0],
                 bg_top: [0.952, 0.955, 0.960, 1.0],
                 bg_bottom: [0.912, 0.917, 0.925, 1.0],
                 grid_minor: [0.45, 0.47, 0.50, 0.18],
@@ -278,4 +294,29 @@ fn soft_shadow(color_hex: u32) -> Vec<BoxShadow> {
             inset: false,
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Theme;
+
+    #[test]
+    fn both_canvas_themes_expose_blue_model_selection_colors() {
+        for canvas in [Theme::light().canvas, Theme::dark().canvas] {
+            for color in [
+                canvas.face_hover,
+                canvas.face_selected,
+                canvas.edge_ribbon_hover,
+                canvas.edge_ribbon_selected,
+            ] {
+                assert!(
+                    color[2] > color[0],
+                    "expected a blue-family color: {color:?}"
+                );
+                assert!(color[3] > 0.0);
+            }
+            assert_ne!(canvas.face_hover, canvas.face_selected);
+            assert_ne!(canvas.edge_ribbon_hover, canvas.edge_ribbon_selected);
+        }
+    }
 }

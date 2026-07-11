@@ -237,6 +237,181 @@ fn point_segment_distance(point: Vec2, a: Vec2, b: Vec2) -> f32 {
     point.distance(a + segment * t)
 }
 
+const ARROW_SURFACE_OFFSET: f32 = 0.06;
+const ARROW_HALF_LENGTH: f32 = 0.30;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ArrowChromeLayout {
+    anchor: Vec2,
+    flipped: bool,
+}
+
+/// Places arrow chrome beside the projected positive tip while keeping its
+/// complete panel clear of the handle and inside the viewport.
+fn solve_arrow_chip_anchor(
+    segment: (Vec2, Vec2),
+    viewport: Vec2,
+    panel_size: Vec2,
+) -> ArrowChromeLayout {
+    let direction = (segment.1 - segment.0).normalize_or_zero();
+    let mut perpendicular = Vec2::new(-direction.y, direction.x);
+    if perpendicular.length_squared() < 0.5 {
+        perpendicular = Vec2::X;
+    }
+    if perpendicular.x < 0.0 {
+        perpendicular = -perpendicular;
+    }
+    let margin = 10.0;
+    let gap = 14.0;
+    let minimum_anchor = Vec2::new(margin, 32.0 * (panel_size.y / 104.0).max(1.0));
+    let maximum = (viewport - panel_size - Vec2::splat(margin)).max(minimum_anchor);
+    let candidate = |side: f32| {
+        let center = segment.1 + perpendicular * side * (gap + panel_size.x * 0.5);
+        (center - Vec2::new(panel_size.x * 0.5, 16.0)).clamp(minimum_anchor, maximum)
+    };
+    let intersects = |anchor: Vec2| {
+        let minimum = anchor - Vec2::splat(6.0);
+        let maximum = anchor + panel_size + Vec2::splat(6.0);
+        segment_intersects_rect(segment.0, segment.1, minimum, maximum)
+    };
+    let preferred = candidate(1.0);
+    let preferred_was_clamped = preferred.x + panel_size.x + margin >= viewport.x;
+    if !preferred_was_clamped && !intersects(preferred) {
+        return ArrowChromeLayout {
+            anchor: preferred,
+            flipped: false,
+        };
+    }
+    let alternate = candidate(-1.0);
+    if !intersects(alternate) {
+        ArrowChromeLayout {
+            anchor: alternate,
+            flipped: true,
+        }
+    } else {
+        let corners = [
+            minimum_anchor,
+            Vec2::new(maximum.x, minimum_anchor.y),
+            Vec2::new(minimum_anchor.x, maximum.y),
+            maximum,
+        ];
+        let anchor = corners
+            .into_iter()
+            .find(|anchor| !intersects(*anchor))
+            .unwrap_or(alternate);
+        ArrowChromeLayout {
+            anchor,
+            flipped: anchor.x < segment.1.x,
+        }
+    }
+}
+
+fn segment_intersects_rect(a: Vec2, b: Vec2, minimum: Vec2, maximum: Vec2) -> bool {
+    if (a.cmpge(minimum) & a.cmple(maximum)).all() || (b.cmpge(minimum) & b.cmple(maximum)).all() {
+        return true;
+    }
+    let edges = [
+        (minimum, Vec2::new(maximum.x, minimum.y)),
+        (Vec2::new(maximum.x, minimum.y), maximum),
+        (maximum, Vec2::new(minimum.x, maximum.y)),
+        (Vec2::new(minimum.x, maximum.y), minimum),
+    ];
+    edges
+        .into_iter()
+        .any(|(c, d)| segments_intersect(a, b, c, d))
+}
+
+fn segments_intersect(a: Vec2, b: Vec2, c: Vec2, d: Vec2) -> bool {
+    let cross = |u: Vec2, v: Vec2| u.perp_dot(v);
+    let ab = b - a;
+    let cd = d - c;
+    let denominator = cross(ab, cd);
+    if denominator.abs() < 1.0e-5 {
+        return false;
+    }
+    let t = cross(c - a, cd) / denominator;
+    let u = cross(c - a, ab) / denominator;
+    (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u)
+}
+
+#[cfg(test)]
+fn selection_count_label(language: crate::i18n::Lang, items: &[SelItem]) -> String {
+    let count = items.len();
+    let kind = items.first().and_then(|first| {
+        let discriminant = match first {
+            SelItem::Face(_, _) => 0,
+            SelItem::Edge(_, _) => 1,
+            SelItem::Body(_) => 2,
+            _ => 3,
+        };
+        items
+            .iter()
+            .all(|item| {
+                matches!(
+                    (discriminant, item),
+                    (0, SelItem::Face(_, _)) | (1, SelItem::Edge(_, _)) | (2, SelItem::Body(_))
+                )
+            })
+            .then_some(discriminant)
+    });
+    match language {
+        crate::i18n::Lang::ZhCn => format!(
+            "{count} {}",
+            match kind {
+                Some(0) => crate::i18n::translate_for(language, "Face"),
+                Some(1) => crate::i18n::translate_for(language, "Edge"),
+                Some(2) => crate::i18n::translate_for(language, "Body"),
+                _ => crate::i18n::translate_for(language, "Selected Items"),
+            }
+        ),
+        crate::i18n::Lang::En => {
+            let noun = match kind {
+                Some(0) if count == 1 => "Face",
+                Some(0) => "Faces",
+                Some(1) if count == 1 => "Edge",
+                Some(1) => "Edges",
+                Some(2) if count == 1 => "Body",
+                Some(2) => "Bodies",
+                _ => "Items",
+            };
+            format!("{count} {}", crate::i18n::translate_for(language, noun))
+        }
+    }
+}
+
+fn current_selection_count_label(items: &[SelItem]) -> String {
+    let count = items.len();
+    let all_faces = items.iter().all(|item| matches!(item, SelItem::Face(_, _)));
+    let all_edges = items.iter().all(|item| matches!(item, SelItem::Edge(_, _)));
+    let all_bodies = items.iter().all(|item| matches!(item, SelItem::Body(_)));
+    let key = if crate::i18n::lang() == crate::i18n::Lang::ZhCn {
+        if all_faces {
+            "Face"
+        } else if all_edges {
+            "Edge"
+        } else if all_bodies {
+            "Body"
+        } else {
+            "Selected Items"
+        }
+    } else if all_faces && count == 1 {
+        "Face"
+    } else if all_faces {
+        "Faces"
+    } else if all_edges && count == 1 {
+        "Edge"
+    } else if all_edges {
+        "Edges"
+    } else if all_bodies && count == 1 {
+        "Body"
+    } else if all_bodies {
+        "Bodies"
+    } else {
+        "Items"
+    };
+    format!("{count} {}", crate::i18n::t(key))
+}
+
 fn primitive_segments(entity: SketchEntity) -> Vec<(glam::DVec2, glam::DVec2)> {
     match entity {
         SketchEntity::Line { a, b } => vec![(a, b)],
@@ -868,6 +1043,7 @@ pub struct Viewport {
     extrude_mode: ExtrudeMode,
     extrude_side_mode: ExtrudeSideMode,
     hovered_extrude_arrow: bool,
+    arrow_options_expanded: bool,
     hovered_cube: Option<CubeRegion>,
     cube_interaction: Option<CubeInteraction>,
     marquee: Option<MarqueeInteraction>,
@@ -890,6 +1066,19 @@ pub struct Viewport {
 }
 
 impl Viewport {
+    fn arrow_hit_test(&self, pointer: Vec2, origin: Vec3, normal: Vec3, scale: f32) -> bool {
+        let normal = normal.normalize_or_zero();
+        let center = origin + normal * scale * ARROW_SURFACE_OFFSET;
+        let start = self
+            .camera
+            .project(center - normal * scale * ARROW_HALF_LENGTH);
+        let end = self
+            .camera
+            .project(center + normal * scale * ARROW_HALF_LENGTH);
+        point_segment_distance(pointer, start, end) <= 12.0 * self.device_scale.max(1.0)
+            || hit_test_axis(self.camera.unproject_ray(pointer), origin, normal, scale)
+    }
+
     /// Initializes an empty renderer observing the shared document entity.
     pub fn new(
         document: Entity<Document>,
@@ -968,6 +1157,7 @@ impl Viewport {
             extrude_mode: ExtrudeMode::Auto,
             extrude_side_mode: ExtrudeSideMode::OneSided,
             hovered_extrude_arrow: false,
+            arrow_options_expanded: true,
             hovered_cube: None,
             cube_interaction: None,
             marquee: None,
@@ -1314,7 +1504,7 @@ impl Viewport {
             return false;
         };
         let ray = self.camera.unproject_ray(pointer);
-        if !hit_test_axis(ray, arrow.origin, arrow.normal, arrow.scale) {
+        if !self.arrow_hit_test(pointer, arrow.origin, arrow.normal, arrow.scale) {
             return false;
         }
         self.section_drag = Some(SectionDrag {
@@ -4863,8 +5053,8 @@ impl Viewport {
             return false;
         };
         let ray = self.camera.unproject_ray(pointer);
-        if !hit_test_axis(
-            ray,
+        if !self.arrow_hit_test(
+            pointer,
             origin.as_vec3(),
             direction.as_vec3(),
             self.gizmo_scale(origin.as_vec3()),
@@ -4971,8 +5161,8 @@ impl Viewport {
             return false;
         };
         let ray = self.camera.unproject_ray(pointer);
-        if !hit_test_axis(
-            ray,
+        if !self.arrow_hit_test(
+            pointer,
             origin.as_vec3(),
             direction.as_vec3(),
             self.gizmo_scale(origin.as_vec3()),
@@ -5062,8 +5252,8 @@ impl Viewport {
             return false;
         };
         let ray = self.camera.unproject_ray(pointer);
-        if !hit_test_axis(
-            ray,
+        if !self.arrow_hit_test(
+            pointer,
             origin.as_vec3(),
             direction.as_vec3(),
             self.gizmo_scale(origin.as_vec3()),
@@ -5159,8 +5349,8 @@ impl Viewport {
             self.selected_extrude_face(cx)
         };
         if let Some((body, face_index, origin, normal, bbox_diagonal)) = face {
-            if !hit_test_axis(
-                ray,
+            if !self.arrow_hit_test(
+                pointer,
                 origin.as_vec3(),
                 normal.as_vec3(),
                 self.gizmo_scale(origin.as_vec3()),
@@ -5195,8 +5385,8 @@ impl Viewport {
         if let Some((sketch, entity_indices, origin, normal, bbox_diagonal)) =
             self.selected_open_chain(cx)
         {
-            if !hit_test_axis(
-                ray,
+            if !self.arrow_hit_test(
+                pointer,
                 origin.as_vec3(),
                 normal.as_vec3(),
                 self.gizmo_scale(origin.as_vec3()),
@@ -5228,8 +5418,8 @@ impl Viewport {
         else {
             return false;
         };
-        if !hit_test_axis(
-            ray,
+        if !self.arrow_hit_test(
+            pointer,
             origin.as_vec3(),
             normal.as_vec3(),
             self.gizmo_scale(origin.as_vec3()),
@@ -6987,12 +7177,7 @@ impl Viewport {
             Some(NavAction::Pan) => self.camera.pan(delta),
             _ => {
                 let section_hover = self.section_arrow_state().is_some_and(|arrow| {
-                    hit_test_axis(
-                        self.camera.unproject_ray(pointer),
-                        arrow.origin,
-                        arrow.normal,
-                        arrow.scale,
-                    )
+                    self.arrow_hit_test(pointer, arrow.origin, arrow.normal, arrow.scale)
                 });
                 if section_hover != self.hovered_section_arrow {
                     self.hovered_section_arrow = section_hover;
@@ -7002,12 +7187,7 @@ impl Viewport {
                     return;
                 }
                 let extrude_hover = self.tool_arrow_state(cx).is_some_and(|arrow| {
-                    hit_test_axis(
-                        self.camera.unproject_ray(pointer),
-                        arrow.origin,
-                        arrow.normal,
-                        arrow.scale,
-                    )
+                    self.arrow_hit_test(pointer, arrow.origin, arrow.normal, arrow.scale)
                 });
                 if extrude_hover != self.hovered_extrude_arrow {
                     self.hovered_extrude_arrow = extrude_hover;
@@ -7427,13 +7607,22 @@ impl Viewport {
             .as_ref()
             .map(|(_, position)| *position)
             .unwrap_or(self.last_pointer + Vec2::new(14.0, -22.0));
+        self.begin_numeric_input_at(seed.to_string(), position, window, cx);
+    }
+
+    fn begin_numeric_input_at(
+        &mut self,
+        seed: String,
+        position: Vec2,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let theme = self.theme.clone();
         let variables = self.numeric_variables(cx);
         let units = self.units;
         let uses_units = self.numeric_input_uses_units();
         let input = cx.new(|cx| {
-            let input =
-                NumericInput::new_with_variables(seed.to_string(), "", theme, variables, cx);
+            let input = NumericInput::new_with_variables(seed, "", theme, variables, cx);
             if uses_units {
                 input.with_units(units)
             } else {
@@ -7447,6 +7636,70 @@ impl Viewport {
         self.numeric_input = Some((input, position));
         self.numeric_input_subscription = Some(subscription);
         self.changed(window, cx);
+    }
+
+    fn arrow_value(&self) -> f64 {
+        self.extrude_drag
+            .as_ref()
+            .map(|interaction| interaction.drag.distance)
+            .or_else(|| {
+                self.profile_extrude_drag
+                    .as_ref()
+                    .map(|interaction| interaction.drag.distance)
+            })
+            .or_else(|| {
+                self.open_chain_extrude_drag
+                    .as_ref()
+                    .map(|interaction| interaction.drag.distance)
+            })
+            .or_else(|| {
+                self.dressup_drag
+                    .as_ref()
+                    .map(|interaction| interaction.drag.radius)
+            })
+            .or_else(|| {
+                self.shell_drag
+                    .as_ref()
+                    .map(|interaction| interaction.drag.thickness)
+            })
+            .or_else(|| {
+                self.thicken_drag
+                    .as_ref()
+                    .map(|interaction| interaction.thickness)
+            })
+            .unwrap_or_else(|| match self.active_drag_tool {
+                Some(ToolId::Shell | ToolId::Thicken) => 2.0,
+                _ => 0.0,
+            })
+    }
+
+    fn begin_arrow_numeric_input(
+        &mut self,
+        position: Vec2,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let value = self.arrow_value();
+        if !self.supports_numeric_input()
+            && let Some(arrow) = self.tool_arrow_state(cx)
+        {
+            let pointer = self.camera.project(
+                arrow.origin
+                    + arrow.normal.normalize_or_zero() * arrow.scale * ARROW_HALF_LENGTH * 0.65,
+            );
+            let _ = self.begin_dressup_drag(pointer, cx)
+                || self.begin_shell_drag(pointer, cx)
+                || self.begin_thicken_drag(pointer, cx)
+                || self.begin_extrude_drag(pointer, cx);
+        }
+        if self.supports_numeric_input() {
+            self.begin_numeric_input_at(
+                format!("{:.3}", self.units.display_value(value)),
+                position,
+                window,
+                cx,
+            );
+        }
     }
 
     fn numeric_variables(&self, cx: &Context<Self>) -> HashMap<String, f64> {
@@ -8715,6 +8968,22 @@ impl Render for Viewport {
             window.request_animation_frame();
         }
 
+        let arrow_chrome = self.tool_arrow_state(cx).map(|arrow| {
+            let normal = arrow.normal.normalize_or_zero();
+            let center = arrow.origin + normal * arrow.scale * ARROW_SURFACE_OFFSET;
+            let segment = (
+                self.camera
+                    .project(center - normal * arrow.scale * ARROW_HALF_LENGTH),
+                self.camera
+                    .project(center + normal * arrow.scale * ARROW_HALF_LENGTH),
+            );
+            let layout = solve_arrow_chip_anchor(
+                segment,
+                Vec2::new(width as f32, height as f32),
+                Vec2::new(330.0 * scale, 104.0 * scale),
+            );
+            (layout, segment)
+        });
         self.extrude_badges = self
             .revolve_interaction
             .as_ref()
@@ -8729,18 +8998,20 @@ impl Render for Viewport {
             })
             .or_else(|| {
                 (self.active_drag_tool.is_none()
+                    && self.arrow_options_expanded
                     && self.revolve_interaction.is_none()
                     && self.pattern_interaction.is_none()
                     && self.sketch_pattern_interaction.is_none())
                 .then(|| self.extrude_arrow_state(cx))
                 .flatten()
-                .map(|arrow| {
+                .and_then(|_| arrow_chrome)
+                .map(|(layout, _)| {
                     (
                         ExtrudeMode::ALL
                             .into_iter()
                             .map(|mode| (mode, mode == self.extrude_mode))
                             .collect(),
-                        self.camera.project(arrow.origin) + Vec2::new(18.0, 18.0),
+                        layout.anchor + Vec2::new(0.0, 42.0 * scale),
                     )
                 })
             });
@@ -8752,13 +9023,35 @@ impl Render for Viewport {
                             .into_iter()
                             .map(|mode| (mode, mode == self.extrude_side_mode))
                             .collect(),
-                        *position + Vec2::new(0.0, 28.0 * scale),
+                        *position + Vec2::new(0.0, 30.0 * scale),
                     )
                 })
             })
             .flatten();
 
         let image = self.current_rendered_frame.clone();
+        let value_chip = self
+            .numeric_input
+            .is_none()
+            .then(|| {
+                arrow_chrome.map(|(layout, _)| {
+                    let position = layout.anchor
+                        + if layout.flipped {
+                            Vec2::new(238.0 * scale, 0.0)
+                        } else {
+                            Vec2::ZERO
+                        };
+                    (
+                        format!(
+                            "{} {}",
+                            self.units.display_compact(self.arrow_value()),
+                            self.units.symbol()
+                        ),
+                        position,
+                    )
+                })
+            })
+            .flatten();
         let dressup_badges = (self.active_drag_tool == Some(ToolId::Fillet)
             || self
                 .dressup_drag
@@ -8778,8 +9071,9 @@ impl Render for Viewport {
         let readout = self
             .numeric_input
             .is_none()
-            .then(|| self.gizmo_readout.clone())
-            .flatten();
+            .then_some(arrow_chrome.is_none())
+            .filter(|without_arrow| *without_arrow)
+            .and_then(|_| self.gizmo_readout.clone());
         let numeric_input = self.numeric_input.clone();
         let dimension_edit = self.dimension_target.is_some();
         let dimension_reference = self.dimension_reference;
@@ -8874,8 +9168,15 @@ impl Render for Viewport {
                     self.theme.accent,
                 )
             });
-        let active_sketch = self.document.read(cx).active_sketch.is_some();
-        let active_filter = self.document.read(cx).selection.filter;
+        let (active_sketch, active_filter, selection_label) = {
+            let document = self.document.read(cx);
+            (
+                document.active_sketch.is_some(),
+                document.selection.filter,
+                (!document.selection.items.is_empty())
+                    .then(|| current_selection_count_label(&document.selection.items)),
+            )
+        };
         let filter_hud = (!active_sketch).then_some(active_filter);
         let select_through = self.select_through;
         let pick_popup = self.pick_popup.clone().map(|popup| {
@@ -8989,6 +9290,34 @@ impl Render for Viewport {
                                     )
                                     .child(div().w(px(1.0)).h(px(18.0)).bg(theme.border))
                                 })
+                                .when_some(selection_label, |row, label| {
+                                    row.child(
+                                        div()
+                                            .id("selection-count")
+                                            .px(theme.space(2.0))
+                                            .py(theme.space(1.0))
+                                            .rounded(px(theme.radius_control))
+                                            .bg(theme.well)
+                                            .text_color(theme.text)
+                                            .text_size(px(theme.text_sm + 1.0))
+                                            .cursor_pointer()
+                                            .child(label)
+                                            .on_mouse_down(
+                                                MouseButton::Left,
+                                                cx.listener(|this, _, window, cx| {
+                                                    cx.stop_propagation();
+                                                    this.document.update(cx, |document, cx| {
+                                                        document.selection.clear();
+                                                        cx.notify();
+                                                    });
+                                                    this.hovered = None;
+                                                    this.hovered_edge = None;
+                                                    this.changed(window, cx);
+                                                }),
+                                            ),
+                                    )
+                                    .child(div().w(px(1.0)).h(px(18.0)).bg(theme.border))
+                                })
                                 .children(
                                     [
                                         (SelectionFilter::Body, crate::i18n::t("Body")),
@@ -9088,6 +9417,61 @@ impl Render for Viewport {
                             },
                         )),
                 )
+            })
+            .when_some(value_chip, |element, (label, position)| {
+                let theme = &self.theme;
+                element
+                    .child(
+                        div()
+                            .id("arrow-total-chip")
+                            .absolute()
+                            .left(px(position.x / scale))
+                            .top(px(position.y / scale - 25.0))
+                            .px(theme.space(1.5))
+                            .py(px(2.0))
+                            .rounded(px(theme.radius_control))
+                            .border_1()
+                            .border_color(theme.border)
+                            .bg(theme.panel)
+                            .text_color(theme.text_muted)
+                            .text_size(px(theme.text_sm))
+                            .cursor_pointer()
+                            .child(crate::i18n::t("Total"))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.arrow_options_expanded = !this.arrow_options_expanded;
+                                    cx.notify();
+                                }),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .id("arrow-value-chip")
+                            .absolute()
+                            .left(px(position.x / scale))
+                            .top(px(position.y / scale))
+                            .px(theme.space(2.5))
+                            .py(theme.space(1.5))
+                            .rounded(px(theme.radius_control))
+                            .border_1()
+                            .border_color(theme.border_strong)
+                            .bg(theme.elevated)
+                            .shadow(theme.shadow.clone())
+                            .text_color(theme.text)
+                            .text_size(px(theme.text_md))
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .cursor_pointer()
+                            .child(label)
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this, _, window, cx| {
+                                    cx.stop_propagation();
+                                    this.begin_arrow_numeric_input(position, window, cx);
+                                }),
+                            ),
+                    )
             })
             .when_some(readout, |element, (label, position)| {
                 element.child(
@@ -9780,7 +10164,8 @@ mod tests {
         MarqueeMode, Measurement, NumericDragTransition, PickCandidate, ReferenceGeometry,
         ReferenceKind, SceneMesh, ScreenRect, Viewport, ambiguous_candidates, exploded_offset,
         marquee_mode, nearest_face_per_body, point_is_clipped, resolve_selection_candidate,
-        scene_upload_list, screen_bounds_match, world_reference,
+        scene_upload_list, screen_bounds_match, segment_intersects_rect, selection_count_label,
+        solve_arrow_chip_anchor, world_reference,
     };
     use crate::{
         document::{BodyId, BodyKind, Material, SelItem},
@@ -10011,6 +10396,74 @@ mod tests {
         assert_eq!(
             exploded_offset(center, assembly, 2.0),
             Vec3::new(3.0, 0.0, 0.0)
+        );
+    }
+
+    #[test]
+    fn arrow_chip_anchor_clears_segment_flips_and_clamps() {
+        let viewport = Vec2::new(800.0, 600.0);
+        let panel = Vec2::new(220.0, 100.0);
+        let segment = (Vec2::new(400.0, 330.0), Vec2::new(400.0, 250.0));
+        let layout = solve_arrow_chip_anchor(segment, viewport, panel);
+        assert!(!layout.flipped);
+        assert!(!segment_intersects_rect(
+            segment.0,
+            segment.1,
+            layout.anchor,
+            layout.anchor + panel
+        ));
+
+        let edge_segment = (Vec2::new(760.0, 330.0), Vec2::new(760.0, 250.0));
+        let edge_layout = solve_arrow_chip_anchor(edge_segment, viewport, panel);
+        assert!(edge_layout.flipped);
+        assert!(edge_layout.anchor.x >= 10.0);
+        assert!(edge_layout.anchor.y >= 10.0);
+        assert!(edge_layout.anchor.x + panel.x <= viewport.x - 10.0);
+        assert!(edge_layout.anchor.y + panel.y <= viewport.y - 10.0);
+        assert!(!segment_intersects_rect(
+            edge_segment.0,
+            edge_segment.1,
+            edge_layout.anchor,
+            edge_layout.anchor + panel
+        ));
+    }
+
+    #[test]
+    fn selection_count_formatter_handles_languages_plurality_and_mixed_items() {
+        let face = SelItem::Face(BodyId(1), 0);
+        let edge = SelItem::Edge(BodyId(1), 0);
+        let body = SelItem::Body(BodyId(1));
+        assert_eq!(
+            selection_count_label(crate::i18n::Lang::En, &[face]),
+            "1 Face"
+        );
+        assert_eq!(
+            selection_count_label(crate::i18n::Lang::En, &[face, face]),
+            "2 Faces"
+        );
+        assert_eq!(
+            selection_count_label(crate::i18n::Lang::En, &[body, body]),
+            "2 Bodies"
+        );
+        assert_eq!(
+            selection_count_label(crate::i18n::Lang::En, &[face, edge]),
+            "2 Items"
+        );
+        assert_eq!(
+            selection_count_label(crate::i18n::Lang::ZhCn, &[face]),
+            "1 面"
+        );
+        assert_eq!(
+            selection_count_label(crate::i18n::Lang::ZhCn, &[edge, edge]),
+            "2 边"
+        );
+        assert_eq!(
+            selection_count_label(crate::i18n::Lang::ZhCn, &[body, body, body]),
+            "3 体"
+        );
+        assert_eq!(
+            selection_count_label(crate::i18n::Lang::ZhCn, &[face, edge]),
+            "2 项"
         );
     }
 }

@@ -55,13 +55,20 @@ impl Units {
         displayed * self.millimeters_per_unit()
     }
 
-    /// Short label used beside compact values.
+    /// Formats a millimetre value in this unit with trailing zeros trimmed
+    /// ("5", "5.2", "0"), matching the compact chips beside drag handles.
+    pub fn display_compact(self, millimeters: f64) -> String {
+        let text = format!("{:.2}", self.display_value(millimeters));
+        text.trim_end_matches('0').trim_end_matches('.').to_string()
+    }
+
+    /// Short label used beside compact values ("mm" in English, "毫米" in Chinese).
     pub fn symbol(self) -> &'static str {
         match self {
-            Self::Millimeter => crate::i18n::t("Millimeter"),
-            Self::Centimeter => crate::i18n::t("Centimeter"),
-            Self::Meter => crate::i18n::t("Meter"),
-            Self::Inch => crate::i18n::t("Inch"),
+            Self::Millimeter => crate::i18n::t("mm"),
+            Self::Centimeter => crate::i18n::t("cm"),
+            Self::Meter => crate::i18n::t("m"),
+            Self::Inch => crate::i18n::t("in"),
         }
     }
 }

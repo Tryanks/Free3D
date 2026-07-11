@@ -158,6 +158,16 @@ struct GizmoGpu {
     bright_groups: Vec<wgpu::BindGroup>,
 }
 
+struct ArrowGpu {
+    vertices: wgpu::Buffer,
+    indices: wgpu::Buffer,
+    rim_range: Range<u32>,
+    fill_range: Range<u32>,
+    rim_group: wgpu::BindGroup,
+    fill_group: wgpu::BindGroup,
+    hover_group: wgpu::BindGroup,
+}
+
 struct OrientationCubeGpu {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
@@ -189,7 +199,11 @@ pub struct Renderer {
     hidden_edge_bind_group: wgpu::BindGroup,
     hidden_edge_tint_buffer: wgpu::Buffer,
     hover_bind_group: wgpu::BindGroup,
+    hover_tint_buffer: wgpu::Buffer,
     selected_bind_group: wgpu::BindGroup,
+    selected_tint_buffer: wgpu::Buffer,
+    sketch_hover_bind_group: wgpu::BindGroup,
+    sketch_selected_bind_group: wgpu::BindGroup,
     hover_ribbon_bind_group: wgpu::BindGroup,
     hover_ribbon_tint_buffer: wgpu::Buffer,
     selected_ribbon_bind_group: wgpu::BindGroup,
@@ -228,6 +242,7 @@ pub struct Renderer {
     sketch: Option<SketchGpu>,
     grid_transform: Mat4,
     gizmo: GizmoGpu,
+    arrow: ArrowGpu,
     orientation_cube: OrientationCubeGpu,
     background_pipeline: wgpu::RenderPipeline,
     mesh_pipeline: wgpu::RenderPipeline,
@@ -394,31 +409,45 @@ impl Renderer {
             "hidden edge tint",
             canvas_theme.hidden_edge,
         );
-        let (hover_bind_group, _) = tint_bind_group(
+        let (hover_bind_group, hover_tint_buffer) = tint_bind_group(
             &device,
             &bind_group_layout,
             &uniform_buffer,
             &model_buffer,
             "hover tint",
-            [1.0, 0.58, 0.30, 0.48],
+            canvas_theme.face_hover,
         );
-        let (selected_bind_group, _) = tint_bind_group(
+        let (selected_bind_group, selected_tint_buffer) = tint_bind_group(
             &device,
             &bind_group_layout,
             &uniform_buffer,
             &model_buffer,
             "selected tint",
+            canvas_theme.face_selected,
+        );
+        let (sketch_hover_bind_group, _) = tint_bind_group(
+            &device,
+            &bind_group_layout,
+            &uniform_buffer,
+            &model_buffer,
+            "sketch profile hover tint",
+            [1.0, 0.58, 0.30, 0.48],
+        );
+        let (sketch_selected_bind_group, _) = tint_bind_group(
+            &device,
+            &bind_group_layout,
+            &uniform_buffer,
+            &model_buffer,
+            "sketch profile selected tint",
             [1.0, 0.31, 0.08, 0.72],
         );
-        let mut hover_ribbon_color = canvas_theme.accent;
-        hover_ribbon_color[3] = 0.55;
         let (hover_ribbon_bind_group, hover_ribbon_tint_buffer) = tint_bind_group(
             &device,
             &bind_group_layout,
             &uniform_buffer,
             &model_buffer,
             "hover ribbon tint",
-            hover_ribbon_color,
+            canvas_theme.edge_ribbon_hover,
         );
         let (selected_ribbon_bind_group, selected_ribbon_tint_buffer) = tint_bind_group(
             &device,
@@ -426,7 +455,7 @@ impl Renderer {
             &uniform_buffer,
             &model_buffer,
             "selected ribbon tint",
-            canvas_theme.accent,
+            canvas_theme.edge_ribbon_selected,
         );
         let (visualize_selected_bind_group, _) = tint_bind_group(
             &device,
@@ -434,7 +463,7 @@ impl Renderer {
             &uniform_buffer,
             &model_buffer,
             "visualize selected tint",
-            [1.0, 0.38, 0.12, 0.20],
+            [0.18, 0.61, 0.91, 0.20],
         );
         let (preview_bind_group, _) = tint_bind_group(
             &device,
@@ -716,6 +745,27 @@ impl Renderer {
             normal_groups,
             bright_groups,
         };
+        let (arrow_vertices, arrow_indices, rim_range, fill_range) = double_arrow_geometry();
+        let arrow_group = |label, color| {
+            tint_bind_group(
+                &device,
+                &bind_group_layout,
+                &uniform_buffer,
+                &model_buffer,
+                label,
+                color,
+            )
+            .0
+        };
+        let arrow = ArrowGpu {
+            vertices: vertex_buffer(&device, "double-headed arrow vertices", &arrow_vertices),
+            indices: index_buffer(&device, "double-headed arrow indices", &arrow_indices),
+            rim_range,
+            fill_range,
+            rim_group: arrow_group("arrow light rim", [0.72, 0.76, 1.0, 0.92]),
+            fill_group: arrow_group("arrow indigo", [0.357, 0.357, 0.839, 1.0]),
+            hover_group: arrow_group("arrow hover indigo", [0.45, 0.48, 1.0, 1.0]),
+        };
         let cube_uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("orientation cube uniforms"),
             size: size_of::<Uniforms>() as u64,
@@ -778,7 +828,11 @@ impl Renderer {
             hidden_edge_bind_group,
             hidden_edge_tint_buffer,
             hover_bind_group,
+            hover_tint_buffer,
             selected_bind_group,
+            selected_tint_buffer,
+            sketch_hover_bind_group,
+            sketch_selected_bind_group,
             hover_ribbon_bind_group,
             hover_ribbon_tint_buffer,
             selected_ribbon_bind_group,
@@ -817,6 +871,7 @@ impl Renderer {
             sketch: None,
             grid_transform: Mat4::IDENTITY,
             gizmo,
+            arrow,
             orientation_cube,
             background_pipeline,
             mesh_pipeline,
@@ -885,6 +940,8 @@ impl Renderer {
         for (buffer, color) in [
             (&self.base_tint_buffer, canvas_theme.edge),
             (&self.hidden_edge_tint_buffer, canvas_theme.hidden_edge),
+            (&self.hover_tint_buffer, canvas_theme.face_hover),
+            (&self.selected_tint_buffer, canvas_theme.face_selected),
             (&self.sketch_line_tint_buffer, canvas_theme.sketch),
             (
                 &self.sketch_defined_tint_buffer,
@@ -899,11 +956,15 @@ impl Renderer {
             self.queue
                 .write_buffer(buffer, 0, bytemuck::bytes_of(&Tint { color }));
         }
-        let mut hover_ribbon_color = canvas_theme.accent;
-        hover_ribbon_color[3] = 0.55;
         for (buffer, color) in [
-            (&self.hover_ribbon_tint_buffer, hover_ribbon_color),
-            (&self.selected_ribbon_tint_buffer, canvas_theme.accent),
+            (
+                &self.hover_ribbon_tint_buffer,
+                canvas_theme.edge_ribbon_hover,
+            ),
+            (
+                &self.selected_ribbon_tint_buffer,
+                canvas_theme.edge_ribbon_selected,
+            ),
         ] {
             self.queue
                 .write_buffer(buffer, 0, bytemuck::bytes_of(&Tint { color }));
@@ -1437,9 +1498,10 @@ impl Renderer {
             );
         } else if let Some(arrow) = extrude_arrow {
             let rotation = Quat::from_rotation_arc(Vec3::Z, arrow.normal.normalize_or_zero());
+            let translation = arrow.origin + arrow.normal.normalize_or_zero() * arrow.scale * 0.06;
             write_slot(
                 self.body_ranges.len() + 2,
-                Mat4::from_translation(arrow.origin)
+                Mat4::from_translation(translation)
                     * Mat4::from_quat(rotation)
                     * Mat4::from_scale(Vec3::splat(arrow.scale)),
                 Material::default(),
@@ -1452,9 +1514,10 @@ impl Renderer {
         );
         if let Some(arrow) = section_arrow {
             let rotation = Quat::from_rotation_arc(Vec3::Z, arrow.normal.normalize_or_zero());
+            let translation = arrow.origin + arrow.normal.normalize_or_zero() * arrow.scale * 0.06;
             write_slot(
                 self.body_ranges.len() + 4,
-                Mat4::from_translation(arrow.origin)
+                Mat4::from_translation(translation)
                     * Mat4::from_quat(rotation)
                     * Mat4::from_scale(Vec3::splat(arrow.scale)),
                 Material::default(),
@@ -1730,9 +1793,9 @@ impl Renderer {
                 pass.set_index_buffer(sketch.fill_indices.slice(..), wgpu::IndexFormat::Uint32);
                 for (item, range) in &sketch.profile_ranges {
                     let group = if selected.contains(item) {
-                        &self.selected_bind_group
+                        &self.sketch_selected_bind_group
                     } else if hovered == Some(*item) {
-                        &self.hover_bind_group
+                        &self.sketch_hover_bind_group
                     } else {
                         &self.sketch_fill_bind_group
                     };
@@ -1983,20 +2046,21 @@ impl Renderer {
         model_slot: usize,
     ) {
         let offset = model_slot as u32 * MODEL_STRIDE as u32;
-        let (_, range) = &self.gizmo.ranges[2];
         pass.set_pipeline(&self.gizmo_pipeline);
+        pass.set_vertex_buffer(0, self.arrow.vertices.slice(..));
+        pass.set_index_buffer(self.arrow.indices.slice(..), wgpu::IndexFormat::Uint32);
+        pass.set_bind_group(0, &self.arrow.rim_group, &[offset]);
+        pass.draw_indexed(self.arrow.rim_range.clone(), 0, 0..1);
         pass.set_bind_group(
             0,
             if state.hovered {
-                &self.hover_bind_group
+                &self.arrow.hover_group
             } else {
-                &self.selected_bind_group
+                &self.arrow.fill_group
             },
             &[offset],
         );
-        pass.set_vertex_buffer(0, self.gizmo.vertices.slice(..));
-        pass.set_index_buffer(self.gizmo.indices.slice(..), wgpu::IndexFormat::Uint32);
-        pass.draw_indexed(range.clone(), 0, 0..1);
+        pass.draw_indexed(self.arrow.fill_range.clone(), 0, 0..1);
     }
 }
 
@@ -2879,6 +2943,84 @@ fn add_arrow(vertices: &mut Vec<Vertex>, indices: &mut Vec<u32>, axis: Vec3) {
             tip,
             cone_base + (segment + 1) % SEGMENTS,
         ]);
+    }
+}
+
+fn double_arrow_geometry() -> (Vec<Vertex>, Vec<u32>, Range<u32>, Range<u32>) {
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+    let rim_start = indices.len() as u32;
+    add_double_arrow(&mut vertices, &mut indices, 0.032, 0.080, 0.300, 0.158);
+    let rim_range = rim_start..indices.len() as u32;
+    let fill_start = indices.len() as u32;
+    add_double_arrow(&mut vertices, &mut indices, 0.023, 0.070, 0.291, 0.164);
+    let fill_range = fill_start..indices.len() as u32;
+    (vertices, indices, rim_range, fill_range)
+}
+
+fn add_double_arrow(
+    vertices: &mut Vec<Vertex>,
+    indices: &mut Vec<u32>,
+    shaft_radius: f32,
+    head_radius: f32,
+    tip: f32,
+    head_base: f32,
+) {
+    const SEGMENTS: u32 = 20;
+    let base = vertices.len() as u32;
+    for z in [-head_base, head_base] {
+        for segment in 0..SEGMENTS {
+            let angle = segment as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+            let radial = Vec3::new(angle.cos(), angle.sin(), 0.0);
+            vertices.push(Vertex {
+                position: [radial.x * shaft_radius, radial.y * shaft_radius, z],
+                normal: radial.to_array(),
+                curvature: 0.0,
+            });
+        }
+    }
+    for segment in 0..SEGMENTS {
+        let next = (segment + 1) % SEGMENTS;
+        indices.extend_from_slice(&[
+            base + segment,
+            base + SEGMENTS + segment,
+            base + SEGMENTS + next,
+            base + segment,
+            base + SEGMENTS + next,
+            base + next,
+        ]);
+    }
+    for sign in [-1.0_f32, 1.0] {
+        let cone_base = vertices.len() as u32;
+        for segment in 0..SEGMENTS {
+            let angle = segment as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+            let radial = Vec3::new(angle.cos(), angle.sin(), 0.0);
+            vertices.push(Vertex {
+                position: [
+                    radial.x * head_radius,
+                    radial.y * head_radius,
+                    sign * head_base,
+                ],
+                normal: (radial * 0.88 + Vec3::Z * sign * 0.48)
+                    .normalize()
+                    .to_array(),
+                curvature: 0.0,
+            });
+        }
+        let tip_index = vertices.len() as u32;
+        vertices.push(Vertex {
+            position: [0.0, 0.0, sign * tip],
+            normal: (Vec3::Z * sign).to_array(),
+            curvature: 0.0,
+        });
+        for segment in 0..SEGMENTS {
+            let next = (segment + 1) % SEGMENTS;
+            if sign > 0.0 {
+                indices.extend_from_slice(&[cone_base + segment, tip_index, cone_base + next]);
+            } else {
+                indices.extend_from_slice(&[cone_base + next, tip_index, cone_base + segment]);
+            }
+        }
     }
 }
 

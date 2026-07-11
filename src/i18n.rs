@@ -108,6 +108,13 @@ fn translate(language: Lang, en: &'static str) -> &'static str {
     zh_lookup().get(en).copied().unwrap_or(en)
 }
 
+/// Translates a source key for an explicit language without changing the
+/// process-wide preference. This is also useful for deterministic formatters.
+#[cfg(test)]
+pub fn translate_for(language: Lang, en: &'static str) -> &'static str {
+    translate(language, en)
+}
+
 /// Translates a template and replaces its first `{}` placeholder.
 pub fn tr1(key: &'static str, arg: &str) -> String {
     replace_one(t(key), arg)
@@ -152,6 +159,12 @@ static ZH_TRANSLATIONS: &[(&str, &str)] = &[
     ("Visualize", "可视化"),
     ("Drawing", "绘图"),
     ("Items", "项目"),
+    ("Selected Items", "项"),
+    ("Faces", "面"),
+    ("Edges", "边"),
+    ("Bodies", "体"),
+    ("Deselect All", "全部取消选择"),
+    ("Total", "总计"),
     ("Variables", "变量"),
     ("Materials", "材质"),
     (
@@ -362,6 +375,10 @@ static ZH_TRANSLATIONS: &[(&str, &str)] = &[
     ("Centimeter", "厘米"),
     ("Meter", "米"),
     ("Inch", "英寸"),
+    ("mm", "毫米"),
+    ("cm", "厘米"),
+    ("m", "米"),
+    ("in", "英寸"),
     ("Free3D Default", "Free3D 默认"),
     ("Scroll to Zoom", "滚动缩放"),
     ("Blender Style", "Blender 风格"),
