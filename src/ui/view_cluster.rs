@@ -50,7 +50,7 @@ fn screenshot_cluster(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl Into
             theme,
             "drawing-screenshot",
             "camera",
-            "截图",
+            crate::i18n::t("Screenshot"),
             None,
             None,
             false,
@@ -73,7 +73,7 @@ fn upper_cluster(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEleme
             .p(theme.space(1.0))
             .child(
                 ui::icon_button(theme, "snap", "magnet", app.snap_enabled)
-                    .tooltip(ui::tip(theme, "捕捉", None))
+                    .tooltip(ui::tip(theme, crate::i18n::t("Snap"), None))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.dispatch(AppCommand::ToggleSnap, window, cx)
                     })),
@@ -81,7 +81,7 @@ fn upper_cluster(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEleme
             .child(grid_indicator(app, cx))
             .child(
                 ui::icon_button(theme, "views", "views", app.show_views)
-                    .tooltip(ui::tip(theme, "视图", None))
+                    .tooltip(ui::tip(theme, crate::i18n::t("View"), None))
                     .on_click(cx.listener(|this, _, _window, cx| {
                         this.show_views = !this.show_views;
                         cx.notify();
@@ -117,7 +117,7 @@ fn grid_indicator(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElem
         .hover(|s| s.bg(theme.hover))
         .active(|s| s.bg(theme.active))
         .cursor_pointer()
-        .tooltip(ui::tip(theme, "网格间距", None))
+        .tooltip(ui::tip(theme, crate::i18n::t("Grid Spacing"), None))
         .child(
             div()
                 .text_size(px(theme.text_md))
@@ -150,7 +150,7 @@ fn lower_cluster(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEleme
                 theme,
                 "display-mode",
                 "display",
-                "显示模式",
+                crate::i18n::t("Display Mode"),
                 Some(app.display_mode.label()),
                 None,
                 app.display_mode != DisplayMode::Shaded,
@@ -160,7 +160,16 @@ fn lower_cluster(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEleme
             })),
         )
         .child(
-            info_row(theme, "screenshot", "camera", "截图", None, None, false).on_click(
+            info_row(
+                theme,
+                "screenshot",
+                "camera",
+                crate::i18n::t("Screenshot"),
+                None,
+                None,
+                false,
+            )
+            .on_click(
                 cx.listener(|this, _, window, cx| {
                     this.dispatch(AppCommand::Screenshot, window, cx)
                 }),
@@ -172,7 +181,7 @@ fn lower_cluster(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEleme
                     theme,
                     "history-toggle",
                     "history",
-                    "历史记录",
+                    crate::i18n::t("History"),
                     None,
                     Some("⌥⌘P"),
                     app.show_history,
@@ -290,17 +299,27 @@ fn popover(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
             this.show_views = false;
             cx.notify();
         }))
-        .child(section_label(theme, "标准视图"))
+        .child(section_label(theme, crate::i18n::t("Standard Views")))
         .child(standard_views(app, cx))
         .child(ui::divider(theme, false))
-        .child(section_label(theme, "视图"))
+        .child(section_label(theme, crate::i18n::t("View")))
         .child(saved_views(app, cx))
         .child(ui::divider(theme, false))
         .child(fov_row(theme, fov, fill, cx))
         .child(ui::divider(theme, false))
-        .child(section_label(theme, "表面分析"))
-        .child(analysis_row(app, AnalysisMode::Zebra, "斑马纹", cx))
-        .child(analysis_row(app, AnalysisMode::Curvature, "曲率", cx))
+        .child(section_label(theme, crate::i18n::t("Surface Analysis")))
+        .child(analysis_row(
+            app,
+            AnalysisMode::Zebra,
+            crate::i18n::t("Zebra"),
+            cx,
+        ))
+        .child(analysis_row(
+            app,
+            AnalysisMode::Curvature,
+            crate::i18n::t("Curvature"),
+            cx,
+        ))
         .child(ui::divider(theme, false))
         .child(grid_row(app, cx));
 
@@ -342,9 +361,9 @@ fn saved_views(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
     for index in 0..crate::saved_views::SavedViews::LEN {
         let filled = app.saved_views.get(index).is_some();
         let label = if filled {
-            format!("视图 {}", index + 1)
+            crate::i18n::tr1("View {}", &(index + 1).to_string())
         } else {
-            "+ 保存视图".to_owned()
+            crate::i18n::t("+ Save View").to_owned()
         };
         slots = slots.child(
             div()
@@ -451,7 +470,7 @@ fn fov_row(theme: &Theme, fov: f32, fill: f32, cx: &mut Context<Free3dApp>) -> i
                     div()
                         .text_size(px(theme.text_md))
                         .text_color(theme.text_muted)
-                        .child("视场角"),
+                        .child(crate::i18n::t("Field of View")),
                 )
                 .child(
                     div()
@@ -522,7 +541,7 @@ fn grid_row(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
             div()
                 .text_size(px(theme.text_md))
                 .text_color(theme.text_muted)
-                .child("网格平面"),
+                .child(crate::i18n::t("Grid Plane")),
         )
         .child(toggle_switch(theme, on))
         .on_click(

@@ -56,12 +56,12 @@ impl Units {
     }
 
     /// Short label used beside compact values.
-    pub const fn symbol(self) -> &'static str {
+    pub fn symbol(self) -> &'static str {
         match self {
-            Self::Millimeter => "毫米",
-            Self::Centimeter => "厘米",
-            Self::Meter => "米",
-            Self::Inch => "英寸",
+            Self::Millimeter => crate::i18n::t("Millimeter"),
+            Self::Centimeter => crate::i18n::t("Centimeter"),
+            Self::Meter => crate::i18n::t("Meter"),
+            Self::Inch => crate::i18n::t("Inch"),
         }
     }
 }

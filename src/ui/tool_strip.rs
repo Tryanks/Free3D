@@ -35,7 +35,7 @@ fn card_height(theme: &Theme, rows: f32) -> f32 {
 /// below the Spaces and Tools cards.
 pub fn panels_top(theme: &Theme) -> f32 {
     let gap = f32::from(theme.space(2.0));
-    rail_top(theme) + card_height(theme, 4.0) + gap + card_height(theme, 5.0) + gap
+    rail_top(theme) + card_height(theme, 5.0) + gap + card_height(theme, 5.0) + gap
 }
 
 /// Builds the floating left rail anchored to the left edge.
@@ -71,7 +71,7 @@ fn spaces_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
                 theme,
                 "space-modeling",
                 "modeling",
-                "建模",
+                crate::i18n::t("Modeling"),
                 None,
                 app.space == Space::Modeling,
             )
@@ -82,7 +82,7 @@ fn spaces_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
                 theme,
                 "space-visualize",
                 "visualize",
-                "可视化",
+                crate::i18n::t("Visualize"),
                 None,
                 app.space == Space::Visualize,
             )
@@ -93,28 +93,33 @@ fn spaces_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
                 theme,
                 "space-draw",
                 "draw",
-                "绘图",
+                crate::i18n::t("Drawing"),
                 Some("⇧⌘\\"),
                 app.space == Space::Drawing,
             )
             .on_click(cx.listener(|this, _, _window, cx| this.set_space(Space::Drawing, cx))),
         )
         .child(
-            rail_row(theme, "space-items", "items", "项目", None, app.show_items).when(
-                app.space == Space::Modeling,
-                |row| {
-                    row.on_click(cx.listener(|this, _, window, cx| {
-                        this.dispatch(AppCommand::ToggleItemsPanel, window, cx)
-                    }))
-                },
-            ),
+            rail_row(
+                theme,
+                "space-items",
+                "items",
+                crate::i18n::t("Items"),
+                None,
+                app.show_items,
+            )
+            .when(app.space == Space::Modeling, |row| {
+                row.on_click(cx.listener(|this, _, window, cx| {
+                    this.dispatch(AppCommand::ToggleItemsPanel, window, cx)
+                }))
+            }),
         )
         .child(
             rail_row(
                 theme,
                 "space-variables",
                 "items",
-                "变量",
+                crate::i18n::t("Variables"),
                 Some("⌘⌥V"),
                 app.show_variables,
             )
@@ -122,69 +127,71 @@ fn spaces_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
                 this.dispatch(AppCommand::ToggleVariablesPanel, window, cx)
             })),
         )
-        .child(drawing_tool_row(
-            theme,
-            "drawing-section",
-            "section",
-            "剖视图",
-            DrawingTool::Section,
-            app,
-            cx,
-        ))
-        .child(drawing_tool_row(
-            theme,
-            "drawing-detail",
-            "zoom-in",
-            "局部放大",
-            DrawingTool::Detail,
-            app,
-            cx,
-        ))
-        .child(drawing_tool_row(
-            theme,
-            "drawing-radius",
-            "radius",
-            "半径",
-            DrawingTool::Radius,
-            app,
-            cx,
-        ))
-        .child(drawing_tool_row(
-            theme,
-            "drawing-diameter",
-            "circle",
-            "直径",
-            DrawingTool::Diameter,
-            app,
-            cx,
-        ))
-        .child(drawing_tool_row(
-            theme,
-            "drawing-angle",
-            "angle",
-            "角度",
-            DrawingTool::Angle,
-            app,
-            cx,
-        ))
-        .child(drawing_tool_row(
-            theme,
-            "drawing-bom",
-            "items",
-            "明细表",
-            DrawingTool::Bom,
-            app,
-            cx,
-        ))
-        .child(drawing_tool_row(
-            theme,
-            "drawing-balloon",
-            "circle",
-            "气泡",
-            DrawingTool::Balloon,
-            app,
-            cx,
-        ))
+        .when(app.space == Space::Drawing, |card| {
+            card.child(drawing_tool_row(
+                theme,
+                "drawing-section",
+                "section",
+                crate::i18n::t("Section View"),
+                DrawingTool::Section,
+                app,
+                cx,
+            ))
+            .child(drawing_tool_row(
+                theme,
+                "drawing-detail",
+                "zoom-in",
+                crate::i18n::t("Detail"),
+                DrawingTool::Detail,
+                app,
+                cx,
+            ))
+            .child(drawing_tool_row(
+                theme,
+                "drawing-radius",
+                "radius",
+                crate::i18n::t("Radius"),
+                DrawingTool::Radius,
+                app,
+                cx,
+            ))
+            .child(drawing_tool_row(
+                theme,
+                "drawing-diameter",
+                "circle",
+                crate::i18n::t("Diameter"),
+                DrawingTool::Diameter,
+                app,
+                cx,
+            ))
+            .child(drawing_tool_row(
+                theme,
+                "drawing-angle",
+                "angle",
+                crate::i18n::t("Angle"),
+                DrawingTool::Angle,
+                app,
+                cx,
+            ))
+            .child(drawing_tool_row(
+                theme,
+                "drawing-bom",
+                "items",
+                crate::i18n::t("Parts List"),
+                DrawingTool::Bom,
+                app,
+                cx,
+            ))
+            .child(drawing_tool_row(
+                theme,
+                "drawing-balloon",
+                "circle",
+                crate::i18n::t("Balloon"),
+                DrawingTool::Balloon,
+                app,
+                cx,
+            ))
+        })
 }
 
 fn material_color(color: [f32; 3]) -> gpui::Hsla {
@@ -219,7 +226,7 @@ fn materials_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElem
                 .text_size(px(theme.text_sm))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(theme.text_faint)
-                .child("材质"),
+                .child(crate::i18n::t("Materials")),
         );
     for body in &document.bodies {
         let id = body.id;
@@ -262,7 +269,7 @@ fn materials_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElem
                 .py(theme.space(2.0))
                 .text_size(px(theme.text_sm))
                 .text_color(theme.text_muted)
-                .child("选择一个实体以编辑材质"),
+                .child(crate::i18n::t("Select a body to edit its material")),
         );
     }
     card
@@ -276,9 +283,9 @@ fn material_editor(
 ) -> impl IntoElement {
     let theme = &app.theme;
     let presets = [
-        ("原色", Material::default()),
+        (crate::i18n::t("Original"), Material::default()),
         (
-            "金属",
+            crate::i18n::t("Metal"),
             Material {
                 metallic: 0.92,
                 roughness: 0.28,
@@ -286,7 +293,7 @@ fn material_editor(
             },
         ),
         (
-            "塑料",
+            crate::i18n::t("Plastic"),
             Material {
                 metallic: 0.0,
                 roughness: 0.32,
@@ -294,7 +301,7 @@ fn material_editor(
             },
         ),
         (
-            "玻璃感",
+            crate::i18n::t("Glass"),
             Material {
                 metallic: 0.08,
                 roughness: 0.06,
@@ -302,7 +309,7 @@ fn material_editor(
             },
         ),
         (
-            "橡胶",
+            crate::i18n::t("Rubber"),
             Material {
                 metallic: 0.0,
                 roughness: 0.90,
@@ -364,9 +371,24 @@ fn material_editor(
     let hsl = rgb_to_hsl(material.base_color);
     let mut custom = div().flex().flex_col().gap(px(3.0));
     for (field, label, value, suffix) in [
-        (MaterialNumericField::Hue, "H 色相", hsl[0], "°"),
-        (MaterialNumericField::Saturation, "S 饱和度", hsl[1], "%"),
-        (MaterialNumericField::Lightness, "L 明度", hsl[2], "%"),
+        (
+            MaterialNumericField::Hue,
+            crate::i18n::t("Hue"),
+            hsl[0],
+            "°",
+        ),
+        (
+            MaterialNumericField::Saturation,
+            crate::i18n::t("Saturation"),
+            hsl[1],
+            "%",
+        ),
+        (
+            MaterialNumericField::Lightness,
+            crate::i18n::t("Lightness"),
+            hsl[2],
+            "%",
+        ),
     ] {
         let editor = app
             .material_editor
@@ -430,7 +452,7 @@ fn drawing_tools_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl Into
                 theme,
                 "drawing-view",
                 "views",
-                "视图",
+                crate::i18n::t("View"),
                 None,
                 app.drawing_tool == Some(DrawingTool::View),
             )
@@ -446,7 +468,7 @@ fn drawing_tools_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl Into
                 theme,
                 "drawing-dimension",
                 "measure",
-                "标注",
+                crate::i18n::t("Label"),
                 None,
                 app.drawing_tool == Some(DrawingTool::Dimension),
             )
@@ -458,34 +480,40 @@ fn drawing_tools_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl Into
             })),
         )
         .child(
-            rail_row(theme, "drawing-hidden", "display", "隐藏线", None, hidden).on_click(
-                cx.listener(|this, _, _window, cx| {
-                    if let Some(id) = this.drawing_selected_view {
-                        this.document.update(cx, |document, cx| {
-                            document.drawing.checkpoint();
-                            if let Some(view) = document
-                                .drawing
-                                .sheet_mut()
-                                .views
-                                .iter_mut()
-                                .find(|view| view.id == id)
-                            {
-                                view.show_hidden = !view.show_hidden;
-                                document.drawing_changed();
-                                cx.notify();
-                            }
-                        });
-                    }
-                    cx.notify();
-                }),
-            ),
+            rail_row(
+                theme,
+                "drawing-hidden",
+                "display",
+                crate::i18n::t("Hidden Lines"),
+                None,
+                hidden,
+            )
+            .on_click(cx.listener(|this, _, _window, cx| {
+                if let Some(id) = this.drawing_selected_view {
+                    this.document.update(cx, |document, cx| {
+                        document.drawing.checkpoint();
+                        if let Some(view) = document
+                            .drawing
+                            .sheet_mut()
+                            .views
+                            .iter_mut()
+                            .find(|view| view.id == id)
+                        {
+                            view.show_hidden = !view.show_hidden;
+                            document.drawing_changed();
+                            cx.notify();
+                        }
+                    });
+                }
+                cx.notify();
+            })),
         )
         .child(
             rail_row(
                 theme,
                 "drawing-centerlines",
                 "center",
-                "中心线",
+                crate::i18n::t("Centerline"),
                 None,
                 app.drawing_selected_view
                     .and_then(|id| {
@@ -550,9 +578,17 @@ fn tools_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
         .flex_col()
         .p(theme.space(1.5))
         .child(
-            rail_row(theme, "search", "search", "搜索", Some("⌘F"), false).on_click(cx.listener(
-                |this, _, window, cx| this.dispatch(AppCommand::CommandSearch, window, cx),
-            )),
+            rail_row(
+                theme,
+                "search",
+                "search",
+                crate::i18n::t("Search"),
+                Some("⌘F"),
+                false,
+            )
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.dispatch(AppCommand::CommandSearch, window, cx)
+            })),
         );
     for group in ToolGroup::ALL {
         card = card.child(group_entry(app, group, cx));
@@ -734,7 +770,7 @@ fn tool_row(app: &Free3dApp, tool: ToolId, cx: &mut Context<Free3dApp>) -> impl 
                     .child(
                         div()
                             .text_size(px(theme.text_sm))
-                            .child(format!("{} 边", app.prism_sides)),
+                            .child(crate::i18n::tr1("{} sides", &app.prism_sides.to_string())),
                     )
                     .child(
                         div()

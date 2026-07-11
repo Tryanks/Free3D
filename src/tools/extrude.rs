@@ -45,11 +45,11 @@ impl ExtrudeSideMode {
     pub const ALL: [Self; 3] = [Self::OneSided, Self::Symmetric, Self::TwoSided];
 
     /// Short viewport badge label.
-    pub const fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Self::OneSided => "单向",
-            Self::Symmetric => "对称",
-            Self::TwoSided => "双向",
+            Self::OneSided => crate::i18n::t("One-Sided"),
+            Self::Symmetric => crate::i18n::t("Symmetric"),
+            Self::TwoSided => crate::i18n::t("Two-Sided"),
         }
     }
 }
@@ -65,13 +65,13 @@ impl ExtrudeMode {
     ];
 
     /// Short label shown in the viewport badge.
-    pub const fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Self::Auto => "自动",
-            Self::NewBody => "新建体",
-            Self::Union => "并集",
-            Self::Subtract => "减集",
-            Self::Intersect => "交集",
+            Self::Auto => crate::i18n::t("Auto"),
+            Self::NewBody => crate::i18n::t("New Body"),
+            Self::Union => crate::i18n::t("Union"),
+            Self::Subtract => crate::i18n::t("Subtract"),
+            Self::Intersect => crate::i18n::t("Intersect"),
         }
     }
 }

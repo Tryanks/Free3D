@@ -101,8 +101,8 @@ impl NumericInput {
         } else {
             self.error = Some(
                 expr::first_unknown_identifier(&self.text, &resolver)
-                    .map(|name| format!("未定义变量 {name}"))
-                    .unwrap_or_else(|| "表达式无效".to_owned()),
+                    .map(|name| crate::i18n::tr1("Undefined variable {}", &name))
+                    .unwrap_or_else(|| crate::i18n::t("Expression is invalid").to_owned()),
             );
             cx.notify();
         }

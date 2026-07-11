@@ -9,6 +9,7 @@ mod document;
 mod drawing;
 mod gizmo;
 mod history;
+mod i18n;
 mod inspection;
 mod io_formats;
 mod kernel;
@@ -30,6 +31,7 @@ use app::Free3dApp;
 use ui::icons::Assets;
 
 fn main() {
+    i18n::init(settings::load().language);
     if std::env::var_os("FREE3D_IO_CHECK").is_some() {
         let path = std::env::temp_dir().join("free3d-io-check.step");
         let mut document = app::startup_document();
@@ -175,9 +177,9 @@ fn main() {
                     }
                     let response = window.prompt(
                         gpui::PromptLevel::Warning,
-                        "未保存的更改将丢失，仍要继续？",
+                        crate::i18n::t("Unsaved changes will be lost. Continue?"),
                         None,
-                        &["继续", "取消"],
+                        &[crate::i18n::t("Continue"), crate::i18n::t("Cancel")],
                         cx,
                     );
                     let weak = weak.clone();

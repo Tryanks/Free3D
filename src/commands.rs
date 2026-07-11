@@ -93,22 +93,22 @@ impl SketchConstraintKind {
     ];
 
     /// Compact panel label.
-    pub const fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Self::Construction => "构造",
-            Self::Horizontal => "水平",
-            Self::Vertical => "垂直",
-            Self::Parallel => "平行",
-            Self::Perpendicular => "正交",
-            Self::Equal => "相等",
-            Self::Tangent => "相切",
-            Self::Collinear => "共线",
-            Self::G2 => "曲率连续",
-            Self::Fix => "锁定/解锁",
-            Self::Concentric => "同心",
-            Self::Coincident => "重合",
-            Self::Symmetric => "对称",
-            Self::PointOnObject => "点在线上",
+            Self::Construction => crate::i18n::t("Construction"),
+            Self::Horizontal => crate::i18n::t("Horizontal"),
+            Self::Vertical => crate::i18n::t("Vertical"),
+            Self::Parallel => crate::i18n::t("Parallel"),
+            Self::Perpendicular => crate::i18n::t("Perpendicular"),
+            Self::Equal => crate::i18n::t("Equal"),
+            Self::Tangent => crate::i18n::t("Tangent"),
+            Self::Collinear => crate::i18n::t("Collinear"),
+            Self::G2 => crate::i18n::t("Curvature Continuous"),
+            Self::Fix => crate::i18n::t("Lock/Unlock"),
+            Self::Concentric => crate::i18n::t("Concentric"),
+            Self::Coincident => crate::i18n::t("Coincident"),
+            Self::Symmetric => crate::i18n::t("Symmetric"),
+            Self::PointOnObject => crate::i18n::t("Point on Object"),
         }
     }
 
@@ -133,10 +133,14 @@ impl SketchConstraintKind {
     }
 
     /// Full tooltip, including selection-order rules where they matter.
-    pub const fn tooltip(self) -> &'static str {
+    pub fn tooltip(self) -> &'static str {
         match self {
-            Self::Symmetric => "对称：先选两个含端点实体，最后选择镜像线；使用两实体最近端点",
-            Self::PointOnObject => "点在线上：先选含点实体，再选直线、圆或圆弧",
+            Self::Symmetric => crate::i18n::t(
+                "Symmetric: select two endpoint-bearing entities, then the mirror line; the nearest endpoints are used",
+            ),
+            Self::PointOnObject => crate::i18n::t(
+                "Point on Object: select a point-bearing entity, then a line, circle, or arc",
+            ),
             _ => self.label(),
         }
     }
@@ -170,13 +174,13 @@ impl StandardView {
     /// Short label rendered on the standard-view buttons.
     pub fn label(self) -> &'static str {
         match self {
-            StandardView::Iso => "等轴测",
-            StandardView::Front => "前视",
-            StandardView::Back => "后视",
-            StandardView::Top => "顶视",
-            StandardView::Bottom => "底视",
-            StandardView::Right => "右视",
-            StandardView::Left => "左视",
+            StandardView::Iso => crate::i18n::t("Isometric"),
+            StandardView::Front => crate::i18n::t("Front View"),
+            StandardView::Back => crate::i18n::t("Back View"),
+            StandardView::Top => crate::i18n::t("Top View"),
+            StandardView::Bottom => crate::i18n::t("Bottom View"),
+            StandardView::Right => crate::i18n::t("Right View"),
+            StandardView::Left => crate::i18n::t("Left View"),
         }
     }
 
@@ -231,16 +235,20 @@ impl ModeChip {
     /// Chip label.
     pub fn label(self) -> &'static str {
         match self {
-            ModeChip::Section => "剖切视图",
-            ModeChip::Isolate => "隔离",
-            ModeChip::Measure => "测量",
-            ModeChip::Exploded => "爆炸",
+            ModeChip::Section => crate::i18n::t("Section View Mode"),
+            ModeChip::Isolate => crate::i18n::t("Isolate"),
+            ModeChip::Measure => crate::i18n::t("Measure"),
+            ModeChip::Exploded => crate::i18n::t("Exploded"),
         }
     }
 
     /// Secondary state line shown under the chip, reflecting `active`.
     pub fn state_label(self, active: bool) -> &'static str {
-        if active { "开启" } else { "关闭" }
+        if active {
+            crate::i18n::t("On")
+        } else {
+            crate::i18n::t("Off")
+        }
     }
 
     /// Icon asset name for the chip.
@@ -275,10 +283,10 @@ impl ToolGroup {
     /// Group label shown in tooltips and flyout headers.
     pub fn label(self) -> &'static str {
         match self {
-            ToolGroup::Sketch => "草图",
-            ToolGroup::Add => "添加",
-            ToolGroup::Transform => "变换",
-            ToolGroup::Tools => "工具",
+            ToolGroup::Sketch => crate::i18n::t("Sketch"),
+            ToolGroup::Add => crate::i18n::t("Add"),
+            ToolGroup::Transform => crate::i18n::t("Transform"),
+            ToolGroup::Tools => crate::i18n::t("Tools"),
         }
     }
 
@@ -534,74 +542,74 @@ impl ToolId {
     /// Human-readable tool name.
     pub fn label(self) -> &'static str {
         match self {
-            ToolId::Line => "直线",
-            ToolId::Rectangle => "矩形",
-            ToolId::CenterRectangle => "中心矩形",
-            ToolId::RoundedRectangle => "圆角矩形",
-            ToolId::Polygon => "多边形",
-            ToolId::Slot => "槽",
-            ToolId::Circle => "圆",
-            ToolId::ThreePointCircle => "三点圆",
-            ToolId::Ellipse => "椭圆",
-            ToolId::EllipseArc => "椭圆弧",
-            ToolId::Arc => "圆弧",
-            ToolId::Point => "点",
-            ToolId::TangentArc => "切线弧",
-            ToolId::Spline => "样条",
-            ToolId::CvSpline => "控制点样条",
-            ToolId::TwoTangentCircle => "两切线圆",
-            ToolId::ThreeTangentCircle => "三切线圆",
-            ToolId::SketchFillet => "草图圆角",
-            ToolId::Trim => "修剪",
-            ToolId::Extend => "延伸",
-            ToolId::Break => "打断",
-            ToolId::SketchOffset => "草图偏移",
-            ToolId::Box => "长方体",
-            ToolId::Cylinder => "圆柱体",
-            ToolId::Sphere => "球体",
-            ToolId::Cone => "圆锥体",
-            ToolId::Torus => "圆环体",
-            ToolId::Ellipsoid => "椭球体",
-            ToolId::Prism => "棱柱",
-            ToolId::Wedge => "楔形",
-            ToolId::Plane => "构造平面",
-            ToolId::Axis => "构造轴",
-            ToolId::DatumPoint => "构造点",
-            ToolId::ReferenceImage => "参考图像",
-            ToolId::Helix => "螺旋线",
-            ToolId::Thread => "螺纹",
-            ToolId::Move => "移动/旋转",
-            ToolId::Translate => "平移",
-            ToolId::Scale => "缩放",
-            ToolId::Mirror => "镜像",
-            ToolId::Pattern => "阵列",
-            ToolId::Align => "对齐",
-            ToolId::Ground => "接地",
-            ToolId::Joint => "关节",
-            ToolId::Drive => "驱动",
-            ToolId::Extrude => "拉伸",
-            ToolId::Revolve => "旋转体",
-            ToolId::Sweep => "扫掠",
-            ToolId::Loft => "放样",
-            ToolId::Patch => "修补",
-            ToolId::Stitch => "缝合",
-            ToolId::Thicken => "加厚",
-            ToolId::DeleteFace => "删除面",
-            ToolId::Shell => "抽壳",
-            ToolId::Fillet => "圆角",
-            ToolId::Chamfer => "倒角",
-            ToolId::OffsetFace => "偏移面",
-            ToolId::ReplaceFace => "替换面",
-            ToolId::Hole => "孔",
-            ToolId::Draft => "拔模",
-            ToolId::Split => "分割体",
-            ToolId::Project => "投影",
-            ToolId::Union => "布尔并集",
-            ToolId::Subtract => "布尔减集",
-            ToolId::Intersect => "布尔交集",
-            ToolId::Properties => "属性",
-            ToolId::InterferenceCheck => "干涉检查",
-            ToolId::GeometryCheck => "检查几何",
+            ToolId::Line => crate::i18n::t("Line"),
+            ToolId::Rectangle => crate::i18n::t("Rectangle"),
+            ToolId::CenterRectangle => crate::i18n::t("Center Rectangle"),
+            ToolId::RoundedRectangle => crate::i18n::t("Rounded Rectangle"),
+            ToolId::Polygon => crate::i18n::t("Polygon"),
+            ToolId::Slot => crate::i18n::t("Slot"),
+            ToolId::Circle => crate::i18n::t("Circle"),
+            ToolId::ThreePointCircle => crate::i18n::t("Three-Point Circle"),
+            ToolId::Ellipse => crate::i18n::t("Ellipse"),
+            ToolId::EllipseArc => crate::i18n::t("Elliptical Arc"),
+            ToolId::Arc => crate::i18n::t("Arc"),
+            ToolId::Point => crate::i18n::t("Point"),
+            ToolId::TangentArc => crate::i18n::t("Tangent Arc"),
+            ToolId::Spline => crate::i18n::t("Spline"),
+            ToolId::CvSpline => crate::i18n::t("Control-Point Spline"),
+            ToolId::TwoTangentCircle => crate::i18n::t("Two-Tangent Circle"),
+            ToolId::ThreeTangentCircle => crate::i18n::t("Three-Tangent Circle"),
+            ToolId::SketchFillet => crate::i18n::t("Sketch Fillet"),
+            ToolId::Trim => crate::i18n::t("Trim"),
+            ToolId::Extend => crate::i18n::t("Extend"),
+            ToolId::Break => crate::i18n::t("Break"),
+            ToolId::SketchOffset => crate::i18n::t("Sketch Offset"),
+            ToolId::Box => crate::i18n::t("Box"),
+            ToolId::Cylinder => crate::i18n::t("Cylinder"),
+            ToolId::Sphere => crate::i18n::t("Sphere"),
+            ToolId::Cone => crate::i18n::t("Cone"),
+            ToolId::Torus => crate::i18n::t("Torus"),
+            ToolId::Ellipsoid => crate::i18n::t("Ellipsoid"),
+            ToolId::Prism => crate::i18n::t("Prism"),
+            ToolId::Wedge => crate::i18n::t("Wedge"),
+            ToolId::Plane => crate::i18n::t("Construction Plane"),
+            ToolId::Axis => crate::i18n::t("Construction Axis"),
+            ToolId::DatumPoint => crate::i18n::t("Construction Point"),
+            ToolId::ReferenceImage => crate::i18n::t("Reference Image"),
+            ToolId::Helix => crate::i18n::t("Helix"),
+            ToolId::Thread => crate::i18n::t("Thread"),
+            ToolId::Move => crate::i18n::t("Move/Rotate"),
+            ToolId::Translate => crate::i18n::t("Translate"),
+            ToolId::Scale => crate::i18n::t("Scale"),
+            ToolId::Mirror => crate::i18n::t("Mirror"),
+            ToolId::Pattern => crate::i18n::t("Pattern"),
+            ToolId::Align => crate::i18n::t("Align"),
+            ToolId::Ground => crate::i18n::t("Ground"),
+            ToolId::Joint => crate::i18n::t("Joint"),
+            ToolId::Drive => crate::i18n::t("Drive"),
+            ToolId::Extrude => crate::i18n::t("Extrude"),
+            ToolId::Revolve => crate::i18n::t("Revolve"),
+            ToolId::Sweep => crate::i18n::t("Sweep"),
+            ToolId::Loft => crate::i18n::t("Loft"),
+            ToolId::Patch => crate::i18n::t("Patch"),
+            ToolId::Stitch => crate::i18n::t("Stitch"),
+            ToolId::Thicken => crate::i18n::t("Thicken"),
+            ToolId::DeleteFace => crate::i18n::t("Delete Face"),
+            ToolId::Shell => crate::i18n::t("Shell"),
+            ToolId::Fillet => crate::i18n::t("Fillet"),
+            ToolId::Chamfer => crate::i18n::t("Chamfer"),
+            ToolId::OffsetFace => crate::i18n::t("Offset Face"),
+            ToolId::ReplaceFace => crate::i18n::t("Replace Face"),
+            ToolId::Hole => crate::i18n::t("Hole"),
+            ToolId::Draft => crate::i18n::t("Draft"),
+            ToolId::Split => crate::i18n::t("Split Body"),
+            ToolId::Project => crate::i18n::t("Project Geometry"),
+            ToolId::Union => crate::i18n::t("Boolean Union"),
+            ToolId::Subtract => crate::i18n::t("Boolean Subtract"),
+            ToolId::Intersect => crate::i18n::t("Boolean Intersect"),
+            ToolId::Properties => crate::i18n::t("Properties"),
+            ToolId::InterferenceCheck => crate::i18n::t("Interference Check"),
+            ToolId::GeometryCheck => crate::i18n::t("Check Geometry"),
         }
     }
 
@@ -763,24 +771,24 @@ impl SearchCommand {
     pub fn label(self) -> &'static str {
         match self {
             Self::Tool(tool) => tool.label(),
-            Self::Undo => "撤销",
-            Self::Redo => "重做",
-            Self::SaveProject => "保存",
-            Self::SaveProjectAs => "另存为",
-            Self::OpenProject => "打开",
-            Self::NewProject => "新建项目",
-            Self::Import => "导入",
-            Self::Export => "导出",
-            Self::Variables => "变量",
-            Self::Visualize => "可视化",
-            Self::Materials => "材质",
-            Self::StandardView(StandardView::Iso) => "等轴测视图",
-            Self::StandardView(StandardView::Front) => "前视图",
-            Self::StandardView(StandardView::Back) => "后视图",
-            Self::StandardView(StandardView::Top) => "顶视图",
-            Self::StandardView(StandardView::Bottom) => "底视图",
-            Self::StandardView(StandardView::Right) => "右视图",
-            Self::StandardView(StandardView::Left) => "左视图",
+            Self::Undo => crate::i18n::t("Undo"),
+            Self::Redo => crate::i18n::t("Redo"),
+            Self::SaveProject => crate::i18n::t("Save"),
+            Self::SaveProjectAs => crate::i18n::t("Save As"),
+            Self::OpenProject => crate::i18n::t("Open"),
+            Self::NewProject => crate::i18n::t("New Project"),
+            Self::Import => crate::i18n::t("Import"),
+            Self::Export => crate::i18n::t("Export"),
+            Self::Variables => crate::i18n::t("Variables"),
+            Self::Visualize => crate::i18n::t("Visualize"),
+            Self::Materials => crate::i18n::t("Materials"),
+            Self::StandardView(StandardView::Iso) => crate::i18n::t("Isometric View"),
+            Self::StandardView(StandardView::Front) => crate::i18n::t("Front View"),
+            Self::StandardView(StandardView::Back) => crate::i18n::t("Back View"),
+            Self::StandardView(StandardView::Top) => crate::i18n::t("Top View"),
+            Self::StandardView(StandardView::Bottom) => crate::i18n::t("Bottom View"),
+            Self::StandardView(StandardView::Right) => crate::i18n::t("Right View"),
+            Self::StandardView(StandardView::Left) => crate::i18n::t("Left View"),
         }
     }
 

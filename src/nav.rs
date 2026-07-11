@@ -41,14 +41,14 @@ impl NavPreset {
     ];
 
     /// User-facing preset name.
-    pub const fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Self::Free3dDefault => "Free3D 默认",
-            Self::ZoomScroll => "滚动缩放",
-            Self::Blender => "Blender 风格",
-            Self::Fusion => "Fusion 风格",
-            Self::SolidWorks => "SolidWorks 风格",
-            Self::TrackpadClassic => "触控板经典",
+            Self::Free3dDefault => crate::i18n::t("Free3D Default"),
+            Self::ZoomScroll => crate::i18n::t("Scroll to Zoom"),
+            Self::Blender => crate::i18n::t("Blender Style"),
+            Self::Fusion => crate::i18n::t("Fusion Style"),
+            Self::SolidWorks => crate::i18n::t("SolidWorks Style"),
+            Self::TrackpadClassic => crate::i18n::t("Classic Trackpad"),
         }
     }
 

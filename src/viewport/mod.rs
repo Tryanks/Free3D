@@ -74,11 +74,11 @@ pub enum DisplayMode {
 
 impl DisplayMode {
     /// Chinese state label shown below the display-mode row.
-    pub const fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Self::Shaded => "着色",
-            Self::Wireframe => "线框",
-            Self::HiddenEdges => "隐藏边",
+            Self::Shaded => crate::i18n::t("Shaded"),
+            Self::Wireframe => crate::i18n::t("Wireframe"),
+            Self::HiddenEdges => crate::i18n::t("Hidden Edges"),
             Self::XRay => "X-Ray",
         }
     }
@@ -411,10 +411,10 @@ enum PatternMode {
 }
 
 impl PatternMode {
-    const fn label(self) -> &'static str {
+    fn label(self) -> &'static str {
         match self {
-            Self::Linear => "线性",
-            Self::Circular => "环形",
+            Self::Linear => crate::i18n::t("Linear"),
+            Self::Circular => crate::i18n::t("Circular"),
         }
     }
 }
@@ -1022,6 +1022,13 @@ impl Viewport {
     /// Updates the renderer palette and invalidates the current canvas frame.
     pub fn set_canvas_theme(&mut self, canvas: crate::theme::CanvasTheme, cx: &mut Context<Self>) {
         self.renderer.set_canvas_theme(canvas);
+        self.dirty = true;
+        cx.notify();
+    }
+
+    /// Rebuilds language-dependent GPU text and invalidates the canvas.
+    pub fn refresh_orientation_labels(&mut self, cx: &mut Context<Self>) {
+        self.renderer.refresh_orientation_labels();
         self.dirty = true;
         cx.notify();
     }
@@ -2294,7 +2301,8 @@ impl Viewport {
                         });
                         self.gizmo_readout = None;
                     } else {
-                        self.gizmo_readout = Some(("三点共线".into(), pointer));
+                        self.gizmo_readout =
+                            Some((crate::i18n::t("Three points are collinear").into(), pointer));
                     }
                 }
                 interaction.cursor = Some(point);
@@ -3066,7 +3074,7 @@ impl Viewport {
         if !applicable {
             self.active_drag_tool = None;
             self.gizmo_readout = Some((
-                "所选几何不支持此操作；实体专用工具不能用于曲面体".to_owned(),
+                crate::i18n::t("Selected geometry does not support this operation; body-only tools cannot be used on surface bodies").to_owned(),
                 self.last_pointer + Vec2::new(14.0, -22.0),
             ));
             self.changed(window, cx);
@@ -3579,7 +3587,7 @@ impl Viewport {
         self.joint_tool_active = true;
         self.joint_first = None;
         self.gizmo_readout = Some((
-            "拾取第一个连接框架 · 平面/圆边/构造轴或点".to_owned(),
+            crate::i18n::t("Pick the first connection frame · plane, circular edge, construction axis, or point").to_owned(),
             self.last_pointer + Vec2::new(14.0, -22.0),
         ));
         cx.notify();
@@ -3669,7 +3677,8 @@ impl Viewport {
     fn pick_joint_connector(&mut self, pointer: Vec2, cx: &mut Context<Self>) -> bool {
         let Some(candidate) = self.joint_connector_at(pointer, cx) else {
             self.gizmo_readout = Some((
-                "请选择平面、圆边、构造轴或点".to_owned(),
+                crate::i18n::t("Select a plane, circular edge, construction axis, or point")
+                    .to_owned(),
                 pointer + Vec2::new(14.0, -22.0),
             ));
             return true;
@@ -3678,7 +3687,8 @@ impl Viewport {
             if first.0 == candidate.0 {
                 self.joint_first = Some(first);
                 self.gizmo_readout = Some((
-                    "第二个连接框架必须属于不同实体".to_owned(),
+                    crate::i18n::t("The second connection frame must belong to a different body")
+                        .to_owned(),
                     pointer + Vec2::new(14.0, -22.0),
                 ));
                 return true;
@@ -3699,13 +3709,16 @@ impl Viewport {
             });
             self.joint_tool_active = false;
             self.gizmo_readout = Some((
-                "关节已创建 · 旋转".to_owned(),
+                crate::i18n::t("Joint created · Revolute").to_owned(),
                 pointer + Vec2::new(14.0, -22.0),
             ));
         } else {
             self.joint_first = Some(candidate);
             self.gizmo_readout = Some((
-                "拾取第二个连接框架 · 必须属于不同实体".to_owned(),
+                crate::i18n::t(
+                    "Pick the second connection frame · it must belong to a different body",
+                )
+                .to_owned(),
                 pointer + Vec2::new(14.0, -22.0),
             ));
         }
@@ -3786,7 +3799,7 @@ impl Viewport {
                     }
                 });
                 self.gizmo_readout = Some((
-                    format!("目标面：{}", plane.label),
+                    crate::i18n::tr1("Target face: {}", &plane.label),
                     self.last_pointer + Vec2::new(14.0, -22.0),
                 ));
             }
@@ -3802,7 +3815,7 @@ impl Viewport {
                     expressions: [None, None, None, None],
                 });
                 self.gizmo_readout = Some((
-                    format!("轴：{} · 输入半径", axis.label),
+                    crate::i18n::tr1("Axis: {} · enter radius", &axis.label),
                     self.last_pointer + Vec2::new(14.0, -22.0),
                 ));
             }
@@ -3844,7 +3857,7 @@ impl Viewport {
                     }
                 });
                 self.gizmo_readout = Some((
-                    "草图镜像已创建".into(),
+                    crate::i18n::t("Sketch mirror created").into(),
                     self.last_pointer + Vec2::new(14.0, -22.0),
                 ));
                 self.sync_sketch_gpu(cx);
@@ -3994,7 +4007,7 @@ impl Viewport {
         self.cancel_feature_interaction();
         self.pending_reference = Some(PendingReference::ReplaceFace { body, face_index });
         self.gizmo_readout = Some((
-            "点击目标面或构造平面".to_owned(),
+            crate::i18n::t("Click a target face or construction plane").to_owned(),
             self.last_pointer + Vec2::new(14.0, -22.0),
         ));
         self.changed(window, cx);
@@ -4007,7 +4020,7 @@ impl Viewport {
         }
         self.project_pending = true;
         self.gizmo_readout = Some((
-            "点击要投影的边或面轮廓".to_owned(),
+            crate::i18n::t("Click an edge or face outline to project").to_owned(),
             self.last_pointer + Vec2::new(14.0, -22.0),
         ));
         self.changed(window, cx);
@@ -4054,7 +4067,7 @@ impl Viewport {
             radius,
         });
         self.gizmo_readout = Some((
-            "输入螺距".into(),
+            crate::i18n::t("Enter pitch").into(),
             self.last_pointer + Vec2::new(14.0, -22.0),
         ));
         self.sync_sketch_gpu(cx);
@@ -4121,7 +4134,7 @@ impl Viewport {
             diameter_expression: None,
         });
         self.gizmo_readout = Some((
-            "点击孔位置".to_owned(),
+            crate::i18n::t("Click the hole position").to_owned(),
             self.last_pointer + Vec2::new(14.0, -22.0),
         ));
         self.changed(window, cx);
@@ -4192,7 +4205,7 @@ impl Viewport {
             self.cancel_feature_interaction();
             self.pending_reference = Some(PendingReference::SketchMirror { id, entities });
             self.gizmo_readout = Some((
-                "选择镜像线".into(),
+                crate::i18n::t("Select the mirror line").into(),
                 self.last_pointer + Vec2::new(14.0, -22.0),
             ));
             self.changed(window, cx);
@@ -4263,7 +4276,7 @@ impl Viewport {
                     direction: glam::DVec2::X,
                 });
                 self.gizmo_readout = Some((
-                    "线性阵列：拖动方向和间距".into(),
+                    crate::i18n::t("Linear pattern: drag direction and spacing").into(),
                     self.last_pointer + Vec2::new(14.0, -22.0),
                 ));
                 self.changed(window, cx);
@@ -4427,7 +4440,7 @@ impl Viewport {
             ) {
                 format!("⌀ {value:.1}")
             } else {
-                format!("深度 {value:.1}")
+                crate::i18n::tr1("Depth {}", &format!("{value:.1}"))
             },
             pointer + Vec2::new(14.0, -22.0),
         ));
@@ -4494,8 +4507,10 @@ impl Viewport {
         };
         self.gizmo_readout = Some((
             match interaction.phase {
-                HolePhase::Depth | HolePhase::CounterboreDepth => "拖动或输入深度",
-                _ => "拖动或输入直径",
+                HolePhase::Depth | HolePhase::CounterboreDepth => {
+                    crate::i18n::t("Drag or enter depth")
+                }
+                _ => crate::i18n::t("Drag or enter diameter"),
             }
             .to_owned(),
             self.last_pointer + Vec2::new(14.0, -22.0),
@@ -4571,8 +4586,10 @@ impl Viewport {
         }
         self.gizmo_readout = Some((
             format!(
-                "线性阵列 {} × {:.2}",
-                interaction.count, interaction.spacing
+                "{} {} × {:.2}",
+                crate::i18n::t("Linear Pattern"),
+                interaction.count,
+                interaction.spacing
             ),
             pointer + Vec2::new(14.0, -22.0),
         ));
@@ -4765,9 +4782,9 @@ impl Viewport {
             interaction.anchor = None;
             self.gizmo_readout = Some((
                 if mode == PatternMode::Linear {
-                    "线性阵列：拖动方向和间距"
+                    crate::i18n::t("Linear pattern: drag direction and spacing")
                 } else {
-                    "环形阵列：点击中心"
+                    crate::i18n::t("Circular pattern: click the center")
                 }
                 .into(),
                 self.last_pointer + Vec2::new(14.0, -22.0),
@@ -6259,7 +6276,7 @@ impl Viewport {
                     });
                     self.project_pending = false;
                     self.gizmo_readout = Some((
-                        "投影已创建为构造几何".to_owned(),
+                        crate::i18n::t("Projection created as construction geometry").to_owned(),
                         self.last_pointer + Vec2::new(14.0, -22.0),
                     ));
                     self.sync_sketch_gpu(cx);
@@ -6371,7 +6388,7 @@ impl Viewport {
                 });
                 if !created {
                     self.gizmo_readout = Some((
-                        "请选择所需数量的非平行直线".into(),
+                        crate::i18n::t("Select the required number of nonparallel lines").into(),
                         pointer + Vec2::new(14.0, -22.0),
                     ));
                 }
@@ -6397,9 +6414,9 @@ impl Viewport {
                 self.gizmo_readout = (!changed).then(|| {
                     (
                         if sketch_tool == Some(ToolId::Extend) {
-                            "未找到可延伸到的交点"
+                            crate::i18n::t("No intersection was found to extend to")
                         } else {
-                            "该位置无法打断"
+                            crate::i18n::t("Cannot break at this position")
                         }
                         .to_owned(),
                         pointer + Vec2::new(14.0, -22.0),
@@ -6804,7 +6821,10 @@ impl Viewport {
                             Some((format!("r {radius:.1}"), pointer + Vec2::new(14.0, -22.0)));
                     } else if interaction.tool == ToolId::Polygon {
                         self.gizmo_readout = Some((
-                            format!("[−] {} 边 [+]", interaction.polygon_sides),
+                            crate::i18n::tr1(
+                                "[−] {} sides [+]",
+                                &interaction.polygon_sides.to_string(),
+                            ),
                             pointer + Vec2::new(14.0, -22.0),
                         ));
                     } else if matches!(interaction.tool, ToolId::Slot | ToolId::RoundedRectangle)
@@ -6888,7 +6908,7 @@ impl Viewport {
                             .is_some_and(|item| matches!(item.geo, SketchEntity::EllipseArc { .. }))
                     {
                         self.gizmo_readout = Some((
-                            "椭圆弧暂不支持修剪".into(),
+                            crate::i18n::t("Elliptical arcs cannot be trimmed yet").into(),
                             pointer + Vec2::new(14.0, -22.0),
                         ));
                     }
@@ -7404,7 +7424,9 @@ impl Viewport {
     ) -> Option<(f64, glam::DVec2, &'static str)> {
         match target {
             SketchDimensionTarget::Length(entity) => match sketch.entities[entity.0].geo {
-                SketchEntity::Line { a, b } => Some((a.distance(b), (a + b) * 0.5, "长度")),
+                SketchEntity::Line { a, b } => {
+                    Some((a.distance(b), (a + b) * 0.5, crate::i18n::t("Length")))
+                }
                 _ => None,
             },
             SketchDimensionTarget::Radius(entity) | SketchDimensionTarget::Diameter(entity) => {
@@ -7414,9 +7436,17 @@ impl Viewport {
                     _ => return None,
                 };
                 if matches!(target, SketchDimensionTarget::Diameter(_)) {
-                    Some((radius * 2.0, center + glam::DVec2::X * radius, "直径"))
+                    Some((
+                        radius * 2.0,
+                        center + glam::DVec2::X * radius,
+                        crate::i18n::t("Diameter"),
+                    ))
                 } else {
-                    Some((radius, center + glam::DVec2::X * radius, "半径"))
+                    Some((
+                        radius,
+                        center + glam::DVec2::X * radius,
+                        crate::i18n::t("Radius"),
+                    ))
                 }
             }
             SketchDimensionTarget::Distance { a, b }
@@ -7430,11 +7460,17 @@ impl Viewport {
                 };
                 let (a_point, b_point) = (point(a)?, point(b)?);
                 let (value, label) = if matches!(target, SketchDimensionTarget::Distance { .. }) {
-                    (a_point.distance(b_point), "距离")
+                    (a_point.distance(b_point), crate::i18n::t("Distance"))
                 } else if matches!(target, SketchDimensionTarget::HDistance { .. }) {
-                    ((a_point.x - b_point.x).abs(), "水平距离")
+                    (
+                        (a_point.x - b_point.x).abs(),
+                        crate::i18n::t("Horizontal Distance"),
+                    )
                 } else {
-                    ((a_point.y - b_point.y).abs(), "垂直距离")
+                    (
+                        (a_point.y - b_point.y).abs(),
+                        crate::i18n::t("Vertical Distance"),
+                    )
                 };
                 Some((value, (a_point + b_point) * 0.5, label))
             }
@@ -7454,7 +7490,7 @@ impl Viewport {
                 Some((
                     angle.sin().atan2(angle.cos()).to_degrees().abs(),
                     anchor,
-                    "角度",
+                    crate::i18n::t("Angle"),
                 ))
             }
         }
@@ -7606,7 +7642,11 @@ impl Viewport {
                 target,
                 label: format!(
                     "{}{name} {}",
-                    if reference { "参考 " } else { "" },
+                    if reference {
+                        crate::i18n::t("Reference ")
+                    } else {
+                        ""
+                    },
                     self.dimension_display(target, value)
                 ),
                 position: self.camera.project(sketch.plane.to_world(anchor).as_vec3())
@@ -7657,7 +7697,11 @@ impl Viewport {
                 Some(DimensionReadout {
                     id,
                     target,
-                    label: format!("参考 {name} {}", self.dimension_display(target, value)),
+                    label: format!(
+                        "{} {name} {}",
+                        crate::i18n::t("Reference"),
+                        self.dimension_display(target, value)
+                    ),
                     position: self.camera.project(sketch.plane.to_world(anchor).as_vec3())
                         + Vec2::new(10.0, -18.0 + index as f32 * 3.0),
                     value,
@@ -7868,7 +7912,7 @@ impl Viewport {
                 interaction.pitch = value;
                 interaction.phase = ThreadPhase::Depth;
                 self.gizmo_readout = Some((
-                    "输入螺纹深度".into(),
+                    crate::i18n::t("Enter thread depth").into(),
                     self.last_pointer + Vec2::new(14.0, -22.0),
                 ));
                 self.sync_sketch_gpu(cx);
@@ -7901,19 +7945,19 @@ impl Viewport {
                     interaction.radius = value;
                     interaction.expressions[0] = expression;
                     interaction.phase = HelixPhase::Pitch;
-                    "输入螺距"
+                    crate::i18n::t("Enter pitch")
                 }
                 HelixPhase::Pitch => {
                     interaction.pitch = value;
                     interaction.expressions[1] = expression;
                     interaction.phase = HelixPhase::Turns;
-                    "输入圈数"
+                    crate::i18n::t("Enter turns")
                 }
                 HelixPhase::Turns => {
                     interaction.turns = value;
                     interaction.expressions[2] = expression;
                     interaction.phase = HelixPhase::ProfileRadius;
-                    "输入线径半径"
+                    crate::i18n::t("Enter wire radius")
                 }
                 HelixPhase::ProfileRadius => {
                     interaction.profile_radius = value;
@@ -8166,7 +8210,7 @@ impl Viewport {
         {
             interaction.polygon_sides = value.round().clamp(3.0, 24.0) as usize;
             self.gizmo_readout = Some((
-                format!("[−] {} 边 [+]", interaction.polygon_sides),
+                crate::i18n::tr1("[−] {} sides [+]", &interaction.polygon_sides.to_string()),
                 self.last_pointer + Vec2::new(14.0, -22.0),
             ));
             self.sync_sketch_gpu(cx);
@@ -8201,7 +8245,7 @@ impl Viewport {
                 interaction.drag.end_radius = Some(value);
                 interaction.variable_start_entered = true;
                 self.gizmo_readout = Some((
-                    "输入终点半径".into(),
+                    crate::i18n::t("Enter end radius").into(),
                     self.last_pointer + Vec2::new(14.0, -22.0),
                 ));
             } else {
@@ -8292,9 +8336,9 @@ impl Viewport {
             interaction.tangent_arc = !interaction.tangent_arc;
             self.gizmo_readout = Some((
                 if interaction.tangent_arc {
-                    "切线弧 · T 切换直线".to_owned()
+                    crate::i18n::t("Tangent Arc · T switches to Line").to_owned()
                 } else {
-                    "直线 · T 切换切线弧".to_owned()
+                    crate::i18n::t("Line · T switches to Tangent Arc").to_owned()
                 },
                 self.last_pointer + Vec2::new(14.0, -22.0),
             ));
@@ -8774,15 +8818,18 @@ impl Render for Viewport {
                             .enumerate()
                             .find(|(_, body)| body.id == id)
                     });
-                    let body_name = body.map_or("未命名", |(_, body)| body.name.as_str());
+                    let body_name =
+                        body.map_or(crate::i18n::t("Untitled"), |(_, body)| body.name.as_str());
                     let body_index = body.map_or(0, |(index, _)| index + 1);
                     let label = match candidate.item {
-                        SelItem::Body(_) => format!("体 · {body_name} · {body_index}"),
+                        SelItem::Body(_) => {
+                            format!("{} · {body_name} · {body_index}", crate::i18n::t("Body"))
+                        }
                         SelItem::Face(_, face) => {
-                            format!("面 · {body_name} · {}", face + 1)
+                            format!("{} · {body_name} · {}", crate::i18n::t("Face"), face + 1)
                         }
                         SelItem::Edge(_, edge) => {
-                            format!("边 · {body_name} · {}", edge + 1)
+                            format!("{} · {body_name} · {}", crate::i18n::t("Edge"), edge + 1)
                         }
                         _ => String::new(),
                     };
@@ -8864,16 +8911,16 @@ impl Render for Viewport {
                                             .bg(theme.accent_wash)
                                             .text_color(theme.accent)
                                             .text_size(px(theme.text_sm + 1.0))
-                                            .child("穿透选择"),
+                                            .child(crate::i18n::t("Through Selection")),
                                     )
                                     .child(div().w(px(1.0)).h(px(18.0)).bg(theme.border))
                                 })
                                 .children(
                                     [
-                                        (SelectionFilter::Body, "体"),
-                                        (SelectionFilter::Face, "面"),
-                                        (SelectionFilter::Edge, "边"),
-                                        (SelectionFilter::Auto, "自动"),
+                                        (SelectionFilter::Body, crate::i18n::t("Body")),
+                                        (SelectionFilter::Face, crate::i18n::t("Face")),
+                                        (SelectionFilter::Edge, crate::i18n::t("Edge")),
+                                        (SelectionFilter::Auto, crate::i18n::t("Auto")),
                                     ]
                                     .into_iter()
                                     .enumerate()
@@ -8993,15 +9040,56 @@ impl Render for Viewport {
                         .flex_col()
                         .gap_1()
                         .children(
-                            [("通孔", !blind, 0usize), ("盲孔", blind, 1usize)]
+                            [
+                                (crate::i18n::t("Through"), !blind, 0usize),
+                                (crate::i18n::t("Blind"), blind, 1usize),
+                            ]
+                            .into_iter()
+                            .map(|(label, active, index)| {
+                                div()
+                                    .id(("hole-kind", index))
+                                    .px_2()
+                                    .py_1()
+                                    .rounded_md()
+                                    .bg(if active {
+                                        rgba(0xff6a2fff)
+                                    } else {
+                                        rgba(0x20262eee)
+                                    })
+                                    .text_color(rgba(0xf3f5f7ff))
+                                    .text_size(px(11.0))
+                                    .child(label)
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |this, _, _, cx| {
+                                            cx.stop_propagation();
+                                            if let Some(interaction) = &mut this.hole_interaction {
+                                                interaction.kind = if index == 0 {
+                                                    HoleKind::Through
+                                                } else {
+                                                    HoleKind::Blind { depth: 15.0.into() }
+                                                };
+                                            }
+                                            cx.notify();
+                                        }),
+                                    )
+                            }),
+                        )
+                        .child(
+                            div().flex().gap_1().children(
+                                [
+                                    (crate::i18n::t("Counterbore"), 0usize),
+                                    (crate::i18n::t("Countersink"), 1usize),
+                                    (crate::i18n::t("None"), 2usize),
+                                ]
                                 .into_iter()
-                                .map(|(label, active, index)| {
+                                .map(|(label, index)| {
                                     div()
-                                        .id(("hole-kind", index))
+                                        .id(("hole-cut", index))
                                         .px_2()
                                         .py_1()
                                         .rounded_md()
-                                        .bg(if active {
+                                        .bg(if cut == index {
                                             rgba(0xff6a2fff)
                                         } else {
                                             rgba(0x20262eee)
@@ -9016,62 +9104,24 @@ impl Render for Viewport {
                                                 if let Some(interaction) =
                                                     &mut this.hole_interaction
                                                 {
-                                                    interaction.kind = if index == 0 {
-                                                        HoleKind::Through
-                                                    } else {
-                                                        HoleKind::Blind { depth: 15.0.into() }
+                                                    interaction.cut = match index {
+                                                        0 => HoleCut::Counterbore {
+                                                            diameter: (interaction.diameter * 1.6)
+                                                                .into(),
+                                                            depth: 3.0.into(),
+                                                        },
+                                                        1 => HoleCut::Countersink {
+                                                            diameter: (interaction.diameter * 1.6)
+                                                                .into(),
+                                                            angle_degrees: 90.0.into(),
+                                                        },
+                                                        _ => HoleCut::None,
                                                     };
                                                 }
                                                 cx.notify();
                                             }),
                                         )
                                 }),
-                        )
-                        .child(
-                            div().flex().gap_1().children(
-                                [("沉孔", 0usize), ("锥孔", 1usize), ("无", 2usize)]
-                                    .into_iter()
-                                    .map(|(label, index)| {
-                                        div()
-                                            .id(("hole-cut", index))
-                                            .px_2()
-                                            .py_1()
-                                            .rounded_md()
-                                            .bg(if cut == index {
-                                                rgba(0xff6a2fff)
-                                            } else {
-                                                rgba(0x20262eee)
-                                            })
-                                            .text_color(rgba(0xf3f5f7ff))
-                                            .text_size(px(11.0))
-                                            .child(label)
-                                            .on_mouse_down(
-                                                MouseButton::Left,
-                                                cx.listener(move |this, _, _, cx| {
-                                                    cx.stop_propagation();
-                                                    if let Some(interaction) =
-                                                        &mut this.hole_interaction
-                                                    {
-                                                        interaction.cut = match index {
-                                                            0 => HoleCut::Counterbore {
-                                                                diameter: (interaction.diameter
-                                                                    * 1.6)
-                                                                    .into(),
-                                                                depth: 3.0.into(),
-                                                            },
-                                                            1 => HoleCut::Countersink {
-                                                                diameter: (interaction.diameter
-                                                                    * 1.6)
-                                                                    .into(),
-                                                                angle_degrees: 90.0.into(),
-                                                            },
-                                                            _ => HoleCut::None,
-                                                        };
-                                                    }
-                                                    cx.notify();
-                                                }),
-                                            )
-                                    }),
                             ),
                         ),
                 )
@@ -9105,7 +9155,11 @@ impl Render for Viewport {
                                     cx.notify();
                                 })),
                         )
-                        .child(div().text_size(px(12.0)).child(format!("{sides} 边")))
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .child(crate::i18n::tr1("{} sides", &sides.to_string())),
+                        )
                         .child(
                             div()
                                 .id("polygon-plus")
@@ -9182,7 +9236,7 @@ impl Render for Viewport {
                                     })
                                     .text_color(rgba(0xf3f5f7ff))
                                     .text_size(px(11.0))
-                                    .child("参考")
+                                    .child(crate::i18n::t("Reference"))
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(|this, _, _, cx| {
@@ -9301,7 +9355,11 @@ impl Render for Viewport {
                                 })
                                 .text_color(rgba(0xf3f5f7ff))
                                 .text_size(px(11.0))
-                                .child(if mode { "可变" } else { "恒定" })
+                                .child(if mode {
+                                    crate::i18n::t("Variable")
+                                } else {
+                                    crate::i18n::t("Constant")
+                                })
                                 .on_mouse_down(
                                     MouseButton::Left,
                                     cx.listener(move |this, _, window, cx| {
@@ -9319,8 +9377,13 @@ impl Render for Viewport {
                         .top(px(position.y / scale))
                         .flex()
                         .gap_1()
-                        .children([(true, "外螺纹"), (false, "内螺纹")].into_iter().map(
-                            |(value, label)| {
+                        .children(
+                            [
+                                (true, crate::i18n::t("External Thread")),
+                                (false, crate::i18n::t("Internal Thread")),
+                            ]
+                            .into_iter()
+                            .map(|(value, label)| {
                                 div()
                                     .id(if value {
                                         "external-thread"
@@ -9344,12 +9407,18 @@ impl Render for Viewport {
                                             this.set_thread_external(value, window, cx)
                                         }),
                                     )
-                            },
-                        ))
+                            }),
+                        )
                         .children(
                             [
-                                (crate::document::ThreadMode::Cosmetic, "装饰"),
-                                (crate::document::ThreadMode::Modeled, "实体"),
+                                (
+                                    crate::document::ThreadMode::Cosmetic,
+                                    crate::i18n::t("Decorative"),
+                                ),
+                                (
+                                    crate::document::ThreadMode::Modeled,
+                                    crate::i18n::t("Modeled"),
+                                ),
                             ]
                             .into_iter()
                             .map(|(value, label)| {
@@ -9536,8 +9605,13 @@ impl Render for Viewport {
                         .top(px(position.y / scale))
                         .flex()
                         .gap_1()
-                        .children([(true, "左旋"), (false, "右旋")].into_iter().map(
-                            |(left, label)| {
+                        .children(
+                            [
+                                (true, crate::i18n::t("Turn Left")),
+                                (false, crate::i18n::t("Turn Right")),
+                            ]
+                            .into_iter()
+                            .map(|(left, label)| {
                                 div()
                                     .id(("helix-hand", usize::from(left)))
                                     .px_2()
@@ -9560,8 +9634,8 @@ impl Render for Viewport {
                                             this.changed(window, cx);
                                         }),
                                     )
-                            },
-                        )),
+                            }),
+                        ),
                 )
             })
             .when_some(m6_badges, |element, (axes, position)| {
@@ -9607,7 +9681,7 @@ impl Render for Viewport {
                                 .bg(rgba(0x3b82f6ff))
                                 .text_color(rgba(0xffffffff))
                                 .text_size(px(11.0))
-                                .child("确认")
+                                .child(crate::i18n::t("Confirm"))
                                 .on_mouse_down(
                                     MouseButton::Left,
                                     cx.listener(|this, _, window, cx| {

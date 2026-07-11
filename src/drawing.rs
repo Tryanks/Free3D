@@ -41,13 +41,13 @@ pub enum Projection {
 }
 
 impl Projection {
-    /// Chinese sheet label.
+    /// Localized sheet label.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Front => "前视",
-            Self::Top => "俯视",
-            Self::Right => "右视",
-            Self::Iso => "等轴测",
+            Self::Front => crate::i18n::t("Front View"),
+            Self::Top => crate::i18n::t("Plan View"),
+            Self::Right => crate::i18n::t("Right View"),
+            Self::Iso => crate::i18n::t("Isometric"),
         }
     }
 
@@ -238,9 +238,9 @@ pub struct TitleBlock {
 impl Default for TitleBlock {
     fn default() -> Self {
         Self {
-            project_name: "未命名项目".into(),
+            project_name: crate::i18n::t("Untitled Project").into(),
             drawing_number: "F3D-001".into(),
-            scale: "按视图".into(),
+            scale: crate::i18n::t("By View").into(),
             date: current_date(),
             units: "mm".into(),
             author: String::new(),
@@ -585,15 +585,15 @@ pub fn bom_rows(bodies: &[Body], units: Units) -> Vec<BomRow> {
 
 fn material_label(material: Material) -> &'static str {
     if material == Material::default() {
-        "默认"
+        crate::i18n::t("Default")
     } else if material.metallic >= 0.5 {
-        "金属"
+        crate::i18n::t("Metal")
     } else if material.roughness >= 0.75 {
-        "橡胶"
+        crate::i18n::t("Rubber")
     } else if material.roughness <= 0.1 {
-        "玻璃感"
+        crate::i18n::t("Glass")
     } else {
-        "塑料"
+        crate::i18n::t("Plastic")
     }
 }
 
@@ -861,8 +861,13 @@ pub fn export_svg(
             page_path(path, index + 1)
         };
         let svg = svg_sheet_string(&drawing.sheets[index], projections, bom_rows);
-        std::fs::write(&page_path, svg)
-            .map_err(|e| format!("无法写入 {}：{e}", page_path.display()))?;
+        std::fs::write(&page_path, svg).map_err(|error| {
+            crate::i18n::tr2(
+                "Could not write {}: {}",
+                &page_path.display().to_string(),
+                &error.to_string(),
+            )
+        })?;
     }
     Ok(())
 }
@@ -970,11 +975,11 @@ fn write_bom_svg(svg: &mut String, at: DVec2, rows: &[BomRow]) {
         let _ = write!(svg, "<path d=\"M{} {}H{}\"/>", at.x, y, at.x + width);
     }
     let mut labels = vec![
-        ("序号".to_owned(), at.x + 5.0),
-        ("名称".to_owned(), at.x + 26.0),
-        ("材质".to_owned(), at.x + 53.0),
-        ("体积".to_owned(), at.x + 81.0),
-        ("数量".to_owned(), at.x + 103.0),
+        (crate::i18n::t("Item No.").to_owned(), at.x + 5.0),
+        (crate::i18n::t("Name").to_owned(), at.x + 26.0),
+        (crate::i18n::t("Material").to_owned(), at.x + 53.0),
+        (crate::i18n::t("Volume").to_owned(), at.x + 81.0),
+        (crate::i18n::t("Quantity").to_owned(), at.x + 103.0),
     ];
     for row in rows {
         labels.extend([
@@ -1050,7 +1055,7 @@ fn write_view_annotations_svg(svg: &mut String, view: &DrawingView, projected: &
         } => {
             let _ = write!(
                 svg,
-                "<path stroke-width=\"0.7\" d=\"M{} {}L{} {}\"/><g fill=\"#111\" stroke=\"none\" font-size=\"3.5\"><text x=\"{}\" y=\"{}\">{}</text><text x=\"{}\" y=\"{}\">{}</text><text x=\"{}\" y=\"{}\">剖视 {}-{}</text></g>",
+                "<path stroke-width=\"0.7\" d=\"M{} {}L{} {}\"/><g fill=\"#111\" stroke=\"none\" font-size=\"3.5\"><text x=\"{}\" y=\"{}\">{}</text><text x=\"{}\" y=\"{}\">{}</text><text x=\"{}\" y=\"{}\">{} {}-{}</text></g>",
                 line_a.x,
                 line_a.y,
                 line_b.x,
@@ -1063,6 +1068,7 @@ fn write_view_annotations_svg(svg: &mut String, view: &DrawingView, projected: &
                 label,
                 view.at.x,
                 view.at.y + projected.size.y * view.scale * 0.5 + 7.0,
+                crate::i18n::t("Section"),
                 label,
                 label
             );
@@ -1076,7 +1082,7 @@ fn write_view_annotations_svg(svg: &mut String, view: &DrawingView, projected: &
             let detail_radius = projected.size.max_element() * view.scale * 0.5 + 3.0;
             let _ = write!(
                 svg,
-                "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" stroke-dasharray=\"3 2\"/><circle cx=\"{}\" cy=\"{}\" r=\"{}\"/><text x=\"{}\" y=\"{}\" fill=\"#111\" stroke=\"none\" font-size=\"3.5\">详图 {}</text>",
+                "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" stroke-dasharray=\"3 2\"/><circle cx=\"{}\" cy=\"{}\" r=\"{}\"/><text x=\"{}\" y=\"{}\" fill=\"#111\" stroke=\"none\" font-size=\"3.5\">{} {}</text>",
                 center.x,
                 center.y,
                 radius,
@@ -1085,6 +1091,7 @@ fn write_view_annotations_svg(svg: &mut String, view: &DrawingView, projected: &
                 detail_radius,
                 view.at.x,
                 view.at.y + projected.size.y * view.scale * 0.5 + 7.0,
+                crate::i18n::t("Detail"),
                 label
             );
         }
@@ -1182,12 +1189,18 @@ fn write_dimension_svg(svg: &mut String, dim: &DrawingDim) {
 fn write_title_svg(svg: &mut String, title: &TitleBlock) {
     let _ = write!(
         svg,
-        "<rect x=\"177\" y=\"172\" width=\"115\" height=\"33\"/><path d=\"M177 183H292M177 194H292M220 172V205M260 183V205\"/><g fill=\"#111\" stroke=\"none\" font-size=\"3\"><text x=\"179\" y=\"177\">项目名 {}</text><text x=\"179\" y=\"188\">图号 {}</text><text x=\"222\" y=\"188\">比例 {}</text><text x=\"262\" y=\"188\">单位 {}</text><text x=\"179\" y=\"199\">日期 {}</text><text x=\"222\" y=\"199\">作者 {}</text></g>",
+        "<rect x=\"177\" y=\"172\" width=\"115\" height=\"33\"/><path d=\"M177 183H292M177 194H292M220 172V205M260 183V205\"/><g fill=\"#111\" stroke=\"none\" font-size=\"3\"><text x=\"179\" y=\"177\">{} {}</text><text x=\"179\" y=\"188\">{} {}</text><text x=\"222\" y=\"188\">{} {}</text><text x=\"262\" y=\"188\">{} {}</text><text x=\"179\" y=\"199\">{} {}</text><text x=\"222\" y=\"199\">{} {}</text></g>",
+        crate::i18n::t("Project Name"),
         escape_xml(&title.project_name),
+        crate::i18n::t("Drawing Number"),
         escape_xml(&title.drawing_number),
+        crate::i18n::t("Drawing Scale"),
         escape_xml(&title.scale),
+        crate::i18n::t("Units"),
         escape_xml(&title.units),
+        crate::i18n::t("Date"),
         escape_xml(&title.date),
+        crate::i18n::t("Author"),
         escape_xml(&title.author)
     );
 }
@@ -1205,8 +1218,13 @@ pub fn export_pdf(
     projections: &HashMap<u64, ProjectedView>,
     bom_rows: &[BomRow],
 ) -> Result<(), String> {
-    std::fs::write(path, pdf_bytes(drawing, projections, bom_rows))
-        .map_err(|e| format!("无法写入 {}：{e}", path.display()))
+    std::fs::write(path, pdf_bytes(drawing, projections, bom_rows)).map_err(|error| {
+        crate::i18n::tr2(
+            "Could not write {}: {}",
+            &path.display().to_string(),
+            &error.to_string(),
+        )
+    })
 }
 
 /// Produces a minimal multi-page PDF with a valid xref table.
@@ -1511,12 +1529,12 @@ mod tests {
     #[test]
     fn title_and_multi_sheet_roundtrip() {
         let mut d = Drawing::default();
-        d.sheet_mut().title.author = "测试".into();
+        d.sheet_mut().title.author = crate::i18n::t("Test").into();
         d.add_sheet();
         d.sheet_mut().title.drawing_number = "002".into();
         let loaded: Drawing = serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
         assert_eq!(loaded.sheets.len(), 2);
-        assert_eq!(loaded.sheets[0].title.author, "测试");
+        assert_eq!(loaded.sheets[0].title.author, crate::i18n::t("Test"));
         assert_eq!(loaded.sheets[1].title.drawing_number, "002");
     }
 
@@ -1583,7 +1601,7 @@ mod tests {
     fn svg_contains_title_block() {
         let drawing = Drawing::default();
         let svg = svg_string(&drawing, &HashMap::new(), &[]);
-        assert!(svg.contains("项目名"));
+        assert!(svg.contains(crate::i18n::t("Project Name")));
         assert!(svg.contains("F3D-001"));
     }
 

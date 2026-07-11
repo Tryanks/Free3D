@@ -6,7 +6,7 @@ An open-source direct-modeling CAD application inspired by Shapr3D's interaction
 - **Geometry kernel**: OpenCASCADE (OCCT 7.8.1) through an in-house binding layer (`crates/occt-bridge` cxx bridge + `crates/occt` safe API, statically compiled via occt-sys); every OCCT exception is converted into a `Result`
 - **Viewport rendering**: wgpu offscreen rendering (BGRA readback → gpui `RenderImage`), MSAA 4x, redraws only during interaction
 
-All icons and artwork are original; this project emulates interaction patterns, not any copyrighted assets. The UI copy is currently Simplified Chinese.
+All icons and artwork are original; this project emulates interaction patterns, not any copyrighted assets. The UI is localized in English (default) and 简体中文, auto-detected from the system language with a manual override in Settings. `FREE3D_LANG=zh-CN|en` also works for headless runs.
 
 ## Build & Run
 

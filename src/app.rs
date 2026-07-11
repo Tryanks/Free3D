@@ -189,6 +189,8 @@ pub struct Free3dApp {
     pub analysis: AnalysisMode,
     /// User-facing length unit; geometry remains millimetre-based.
     pub units: Units,
+    /// Persisted language preference (which may remain automatic).
+    pub language: crate::i18n::LangChoice,
     /// Persisted autosave cadence in seconds; zero disables autosave.
     pub autosave_interval_secs: u64,
     /// Snap magnet toggle (stub state only; no viewport effect yet).
@@ -304,6 +306,7 @@ impl Free3dApp {
                 .then_some(AnalysisMode::Zebra)
                 .unwrap_or_default(),
             units: settings.units,
+            language: settings.language,
             autosave_interval_secs: settings.autosave_interval_secs,
             snap_enabled: true,
             fov_degrees: 45.0,
@@ -1255,7 +1258,7 @@ impl Free3dApp {
                     if !applied {
                         self.viewport.update(cx, |viewport, cx| {
                             viewport.show_modeling_hint(
-                                "请选择至少两个实体；曲面体不支持布尔运算",
+                                crate::i18n::t("Select at least two bodies; boolean operations do not support surface bodies"),
                                 window,
                                 cx,
                             )
@@ -1285,7 +1288,11 @@ impl Free3dApp {
                         });
                     } else {
                         self.viewport.update(cx, |viewport, cx| {
-                            viewport.show_modeling_hint("请选择一个圆柱面", window, cx)
+                            viewport.show_modeling_hint(
+                                crate::i18n::t("Select a cylindrical face"),
+                                window,
+                                cx,
+                            )
                         });
                     }
                 }
@@ -1318,7 +1325,9 @@ impl Free3dApp {
                     if !applied {
                         self.viewport.update(cx, |viewport, cx| {
                             viewport.show_modeling_hint(
-                                "请选择同一实体的一条完整闭合边界",
+                                crate::i18n::t(
+                                    "Select one complete closed boundary on the same body",
+                                ),
                                 window,
                                 cx,
                             )
@@ -1345,7 +1354,11 @@ impl Free3dApp {
                     });
                     if !applied {
                         self.viewport.update(cx, |viewport, cx| {
-                            viewport.show_modeling_hint("请选择至少两个曲面体进行缝合", window, cx)
+                            viewport.show_modeling_hint(
+                                crate::i18n::t("Select at least two surface bodies to stitch"),
+                                window,
+                                cx,
+                            )
                         });
                     }
                 }
@@ -1376,7 +1389,7 @@ impl Free3dApp {
                     if !applied {
                         self.viewport.update(cx, |viewport, cx| {
                             viewport.show_modeling_hint(
-                                "删除面无法愈合为有效实体，模型未更改",
+                                crate::i18n::t("The deleted face could not heal into a valid body; the model was not changed"),
                                 window,
                                 cx,
                             )
@@ -1615,7 +1628,7 @@ impl Free3dApp {
                 let Some(body) = bodies.first() else {
                     self.inspection_card = Some(InspectionCard::Validity {
                         body_name: String::new(),
-                        issues: Err("未选择实体".to_owned()),
+                        issues: Err(crate::i18n::t("No body selected").to_owned()),
                     });
                     return;
                 };
@@ -1679,7 +1692,7 @@ impl Free3dApp {
         };
         let desktop = std::path::Path::new(&home).join("Desktop");
         let path = (1..)
-            .map(|n| desktop.join(format!("Free3D-截图-{n}.png")))
+            .map(|n| desktop.join(format!("Free3D-{}-{n}.png", crate::i18n::t("Screenshot"))))
             .find(|candidate| !candidate.exists())
             .expect("an unused screenshot filename exists");
         if let Err(error) = image.save(&path) {
@@ -1692,7 +1705,7 @@ impl Free3dApp {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("参考图像 (.png .jpg .jpeg)".into()),
+            prompt: Some(crate::i18n::t("Reference image (.png .jpg .jpeg)").into()),
         });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = prompt.await else {
@@ -1849,7 +1862,9 @@ impl Free3dApp {
                     Some(extension) if extension.eq_ignore_ascii_case("svg") => {
                         crate::drawing::export_svg(&path, &drawing, &projections, &bom_rows)
                     }
-                    _ => Err("绘图仅支持 .svg 或 .pdf".to_owned()),
+                    _ => {
+                        Err(crate::i18n::t("Drawing export supports only .svg or .pdf").to_owned())
+                    }
                 };
                 if let Err(error) = result {
                     eprintln!("{error}");
@@ -1896,7 +1911,7 @@ impl Free3dApp {
             .and_then(std::path::Path::file_stem)
             .and_then(std::ffi::OsStr::to_str)
             .filter(|name| !name.is_empty())
-            .unwrap_or("未命名");
+            .unwrap_or(crate::i18n::t("Untitled"));
         if self.is_dirty(cx) {
             format!("{name} •")
         } else {
@@ -1918,7 +1933,7 @@ impl Free3dApp {
             .as_deref()
             .and_then(std::path::Path::file_name)
             .and_then(std::ffi::OsStr::to_str)
-            .unwrap_or("未命名.f3d");
+            .unwrap_or(crate::i18n::t("Untitled.f3d"));
         let prompt = cx.prompt_for_new_path(std::path::Path::new(""), Some(suggested));
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(mut path))) = prompt.await else {
@@ -1949,10 +1964,10 @@ impl Free3dApp {
                 if let Err(error) = crate::autosave::clean(
                     self.project_path.as_deref().expect("saved project path"),
                 ) {
-                    eprintln!("清理自动备份失败：{error}");
+                    eprintln!("failed to remove autosave backup: {error}");
                 }
             }
-            Err(error) => eprintln!("保存工程失败：{error}"),
+            Err(error) => eprintln!("failed to save project: {error}"),
         }
         cx.notify();
     }
@@ -1964,9 +1979,9 @@ impl Free3dApp {
         }
         let response = window.prompt(
             PromptLevel::Warning,
-            "未保存的更改将丢失，仍要继续？",
+            crate::i18n::t("Unsaved changes will be lost. Continue?"),
             None,
-            &["继续", "取消"],
+            &[crate::i18n::t("Continue"), crate::i18n::t("Cancel")],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -1982,7 +1997,7 @@ impl Free3dApp {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some("打开 Free3D 工程 (.f3d)".into()),
+            prompt: Some(crate::i18n::t("Open Free3D project (.f3d)").into()),
         });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = prompt.await else {
@@ -1993,7 +2008,7 @@ impl Free3dApp {
                     .and_then(|extension| extension.to_str())
                     .is_some_and(|extension| extension.eq_ignore_ascii_case("f3d"))
             }) else {
-                eprintln!("打开工程失败：请选择 .f3d 文件");
+                eprintln!("failed to open project: select an .f3d file");
                 return;
             };
             this.update(cx, |this, cx| this.open_project_path_now(path, cx))
@@ -2015,9 +2030,9 @@ impl Free3dApp {
         }
         let response = window.prompt(
             PromptLevel::Warning,
-            "未保存的更改将丢失，仍要继续？",
+            crate::i18n::t("Unsaved changes will be lost. Continue?"),
             None,
-            &["继续", "取消"],
+            &[crate::i18n::t("Continue"), crate::i18n::t("Cancel")],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -2035,7 +2050,7 @@ impl Free3dApp {
                 self.install_document(document, Some(path.clone()), cx);
                 self.remember_recent(path);
             }
-            Err(error) => eprintln!("打开工程失败：{error}"),
+            Err(error) => eprintln!("failed to open project: {error}"),
         }
     }
 
@@ -2046,9 +2061,9 @@ impl Free3dApp {
         }
         let response = window.prompt(
             PromptLevel::Warning,
-            "未保存的更改将丢失，仍要继续？",
+            crate::i18n::t("Unsaved changes will be lost. Continue?"),
             None,
-            &["继续", "取消"],
+            &[crate::i18n::t("Continue"), crate::i18n::t("Cancel")],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -2094,7 +2109,7 @@ impl Free3dApp {
             crate::autosave::write(document, project_path)
         });
         if let Err(error) = result {
-            eprintln!("自动保存失败：{error}");
+            eprintln!("autosave failed: {error}");
         }
     }
 
@@ -2134,9 +2149,9 @@ impl Free3dApp {
         };
         let response = window.prompt(
             PromptLevel::Warning,
-            "检测到未保存的自动备份，是否恢复？",
+            crate::i18n::t("A newer autosave was found. Restore it?"),
             None,
-            &["恢复", "忽略"],
+            &[crate::i18n::t("Restore"), crate::i18n::t("Ignore")],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -2150,10 +2165,10 @@ impl Free3dApp {
                             this.install_document(document, recovery.project_path, cx);
                             this.saved_revision = this.document.read(cx).revision.wrapping_add(1);
                         }
-                        Err(error) => eprintln!("恢复自动备份失败：{error}"),
+                        Err(error) => eprintln!("failed to restore autosave backup: {error}"),
                     }
                 } else if let Err(error) = std::fs::remove_file(&recovery.autosave_path) {
-                    eprintln!("删除自动备份失败：{error}");
+                    eprintln!("failed to delete autosave backup: {error}");
                 }
             })
             .ok();
@@ -2166,7 +2181,7 @@ impl Free3dApp {
         self.recent_files.insert(0, path);
         self.recent_files.truncate(8);
         if let Err(error) = save_recent_files(&self.recent_files) {
-            eprintln!("保存最近文件列表失败：{error}");
+            eprintln!("failed to save recent-file list: {error}");
         }
     }
 
@@ -2607,6 +2622,17 @@ impl Free3dApp {
         cx.notify();
     }
 
+    /// Applies and persists the interface language preference.
+    pub fn set_language(&mut self, choice: crate::i18n::LangChoice, cx: &mut Context<Self>) {
+        self.language = choice;
+        crate::i18n::init(choice);
+        self.viewport.update(cx, |viewport, cx| {
+            viewport.refresh_orientation_labels(cx);
+        });
+        self.persist_settings();
+        cx.notify();
+    }
+
     /// Applies and persists the autosave cadence.
     pub fn set_autosave_interval(&mut self, seconds: u64, cx: &mut Context<Self>) {
         self.autosave_interval_secs = seconds;
@@ -2619,6 +2645,7 @@ impl Free3dApp {
             dark_theme: self.theme.is_dark,
             nav_preset: self.nav_preset,
             units: self.units,
+            language: self.language,
             autosave_interval_secs: self.autosave_interval_secs,
         }) {
             eprintln!("failed to save settings: {error}");
@@ -3299,12 +3326,23 @@ fn load_recent_files() -> Vec<std::path::PathBuf> {
 }
 
 fn save_recent_files(paths: &[std::path::PathBuf]) -> Result<(), String> {
-    let path = recent_file_path().ok_or_else(|| "HOME 未设置".to_owned())?;
+    let path = recent_file_path().ok_or_else(|| crate::i18n::t("HOME is not set").to_owned())?;
     let parent = path.parent().expect("recent.json has a parent directory");
-    std::fs::create_dir_all(parent)
-        .map_err(|error| format!("无法创建 {}：{error}", parent.display()))?;
+    std::fs::create_dir_all(parent).map_err(|error| {
+        crate::i18n::tr2(
+            "Could not create {}: {}",
+            &parent.display().to_string(),
+            &error.to_string(),
+        )
+    })?;
     let json = serde_json::to_vec(paths).map_err(|error| error.to_string())?;
-    std::fs::write(&path, json).map_err(|error| format!("无法写入 {}：{error}", path.display()))
+    std::fs::write(&path, json).map_err(|error| {
+        crate::i18n::tr2(
+            "Could not write {}: {}",
+            &path.display().to_string(),
+            &error.to_string(),
+        )
+    })
 }
 
 #[cfg(test)]

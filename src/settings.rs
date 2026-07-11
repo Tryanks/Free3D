@@ -4,7 +4,7 @@ use std::{fs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{nav::NavPreset, units::Units};
+use crate::{i18n::LangChoice, nav::NavPreset, units::Units};
 
 /// Preferences persisted independently from a design document.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -16,6 +16,8 @@ pub struct Settings {
     pub nav_preset: NavPreset,
     /// Active display/input unit.
     pub units: Units,
+    /// Interface language selection.
+    pub language: LangChoice,
     /// Autosave cadence in seconds; zero disables autosave.
     pub autosave_interval_secs: u64,
 }
@@ -26,6 +28,7 @@ impl Default for Settings {
             dark_theme: false,
             nav_preset: NavPreset::default(),
             units: Units::default(),
+            language: LangChoice::Auto,
             autosave_interval_secs: 180,
         }
     }
@@ -76,11 +79,30 @@ mod tests {
             dark_theme: true,
             nav_preset: NavPreset::Blender,
             units: Units::Inch,
+            language: LangChoice::ZhCn,
             autosave_interval_secs: 90,
         };
         save(expected).unwrap();
         assert_eq!(load(), expected);
         // SAFETY: protected by the same process-local test mutex.
         unsafe { std::env::remove_var("FREE3D_SETTINGS_DIR") };
+    }
+
+    #[test]
+    fn language_serde_roundtrip_and_legacy_default() {
+        let settings = Settings {
+            language: LangChoice::ZhCn,
+            ..Settings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Settings>(&json).unwrap().language,
+            LangChoice::ZhCn
+        );
+        let legacy = r#"{"dark_theme":false,"nav_preset":"Free3dDefault","units":"Millimeter","autosave_interval_secs":180}"#;
+        assert_eq!(
+            serde_json::from_str::<Settings>(legacy).unwrap().language,
+            LangChoice::Auto
+        );
     }
 }

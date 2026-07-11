@@ -125,10 +125,18 @@ pub fn render(app: &Free3dApp, window: &Window, cx: &mut Context<Free3dApp>) -> 
                 .text_color(rgba(0x20242aff))
                 .child(match &view.kind {
                     ViewKind::Section { label, .. } => {
-                        format!("剖视 {label}-{label} {}", drawing::scale_label(view.scale))
+                        format!(
+                            "{} {label}-{label} {}",
+                            crate::i18n::t("Section"),
+                            drawing::scale_label(view.scale)
+                        )
                     }
                     ViewKind::Detail { label, .. } => {
-                        format!("详图 {label} {}", drawing::scale_label(view.scale))
+                        format!(
+                            "{} {label} {}",
+                            crate::i18n::t("Detail"),
+                            drawing::scale_label(view.scale)
+                        )
                     }
                     ViewKind::Standard => format!(
                         "{} {}",
@@ -200,11 +208,11 @@ pub fn render(app: &Free3dApp, window: &Window, cx: &mut Context<Free3dApp>) -> 
             .border_color(rgba(0x20242aff))
             .bg(rgba(0xffffffff));
         for cells in std::iter::once(vec![
-            "序号".to_owned(),
-            "名称".to_owned(),
-            "材质".to_owned(),
-            "体积".to_owned(),
-            "数量".to_owned(),
+            crate::i18n::t("Item No.").to_owned(),
+            crate::i18n::t("Name").to_owned(),
+            crate::i18n::t("Material").to_owned(),
+            crate::i18n::t("Volume").to_owned(),
+            crate::i18n::t("Quantity").to_owned(),
         ])
         .chain(bom_rows.iter().map(|row| {
             vec![
@@ -348,7 +356,7 @@ pub fn render(app: &Free3dApp, window: &Window, cx: &mut Context<Free3dApp>) -> 
                     rgba(0xd4d8ddff)
                 })
                 .cursor_pointer()
-                .child(format!("页 {}", index + 1))
+                .child(crate::i18n::tr1("Page {}", &(index + 1).to_string()))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.document.update(cx, |document, cx| {
                         document.drawing.active_sheet = index;

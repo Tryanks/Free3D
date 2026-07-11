@@ -15,27 +15,32 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> Option<impl IntoE
         InspectionCard::Properties(Ok(value)) => {
             let unit = app.units.symbol();
             (
-                "属性",
+                crate::i18n::t("Properties"),
                 vec![
-                    format!(
-                        "体积      {:.6} {unit}³",
-                        app.units.display_volume(value.volume)
+                    crate::i18n::tr2(
+                        "Volume      {} {}³",
+                        &format!("{:.6}", app.units.display_volume(value.volume)),
+                        unit,
                     ),
-                    format!(
-                        "表面积    {:.6} {unit}²",
-                        app.units.display_area(value.area)
+                    crate::i18n::tr2(
+                        "Surface area {} {}²",
+                        &format!("{:.6}", app.units.display_area(value.area)),
+                        unit,
                     ),
-                    format!(
-                        "质心 X    {:.6} {unit}",
-                        app.units.display_value(value.center.x)
+                    crate::i18n::tr2(
+                        "Centroid X  {} {}",
+                        &format!("{:.6}", app.units.display_value(value.center.x)),
+                        unit,
                     ),
-                    format!(
-                        "质心 Y    {:.6} {unit}",
-                        app.units.display_value(value.center.y)
+                    crate::i18n::tr2(
+                        "Centroid Y  {} {}",
+                        &format!("{:.6}", app.units.display_value(value.center.y)),
+                        unit,
                     ),
-                    format!(
-                        "质心 Z    {:.6} {unit}",
-                        app.units.display_value(value.center.z)
+                    crate::i18n::tr2(
+                        "Centroid Z  {} {}",
+                        &format!("{:.6}", app.units.display_value(value.center.z)),
+                        unit,
                     ),
                     format!(
                         "I1        {:.6} {unit}⁵",
@@ -53,16 +58,22 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> Option<impl IntoE
                 None,
             )
         }
-        InspectionCard::Properties(Err(error)) => ("属性", vec![error.clone()], None),
+        InspectionCard::Properties(Err(error)) => {
+            (crate::i18n::t("Properties"), vec![error.clone()], None)
+        }
         InspectionCard::Validity {
             body_name,
             issues: Ok(issues),
-        } if issues.is_empty() => ("检查几何", vec![format!("✓ 有效  {body_name}")], None),
+        } if issues.is_empty() => (
+            crate::i18n::t("Check Geometry"),
+            vec![crate::i18n::tr1("Valid  {}", body_name)],
+            None,
+        ),
         InspectionCard::Validity {
             body_name,
             issues: Ok(issues),
         } => (
-            "检查几何",
+            crate::i18n::t("Check Geometry"),
             std::iter::once(format!("⚠ {body_name}"))
                 .chain(issues.iter().cloned())
                 .collect(),
@@ -70,12 +81,22 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> Option<impl IntoE
         ),
         InspectionCard::Validity {
             issues: Err(error), ..
-        } => ("检查几何", vec![error.clone()], None),
-        InspectionCard::Interference(Err(error)) => ("干涉检查", vec![error.clone()], None),
-        InspectionCard::Interference(Ok(found)) if found.is_empty() => {
-            ("干涉检查", vec!["✓ 无干涉".to_owned()], None)
-        }
-        InspectionCard::Interference(Ok(found)) => ("干涉检查", Vec::new(), Some(found)),
+        } => (crate::i18n::t("Check Geometry"), vec![error.clone()], None),
+        InspectionCard::Interference(Err(error)) => (
+            crate::i18n::t("Interference Check"),
+            vec![error.clone()],
+            None,
+        ),
+        InspectionCard::Interference(Ok(found)) if found.is_empty() => (
+            crate::i18n::t("Interference Check"),
+            vec![crate::i18n::t("No interference").to_owned()],
+            None,
+        ),
+        InspectionCard::Interference(Ok(found)) => (
+            crate::i18n::t("Interference Check"),
+            Vec::new(),
+            Some(found),
+        ),
     };
 
     let mut body = div().flex().flex_col().gap(theme.space(1.0));

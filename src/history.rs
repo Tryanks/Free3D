@@ -442,16 +442,16 @@ impl PrimitiveKind {
     }
 
     /// Stable display stem used for automatic body naming.
-    pub const fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
-            Self::Box { .. } => "Box",
-            Self::Cylinder { .. } => "Cylinder",
-            Self::Sphere { .. } => "Sphere",
-            Self::Cone { .. } => "Cone",
-            Self::Torus { .. } => "Torus",
-            Self::Ellipsoid { .. } => "Ellipsoid",
-            Self::Prism { .. } => "Prism",
-            Self::Wedge { .. } => "Wedge",
+            Self::Box { .. } => crate::i18n::t("Box"),
+            Self::Cylinder { .. } => crate::i18n::t("Cylinder"),
+            Self::Sphere { .. } => crate::i18n::t("Sphere"),
+            Self::Cone { .. } => crate::i18n::t("Cone"),
+            Self::Torus { .. } => crate::i18n::t("Torus"),
+            Self::Ellipsoid { .. } => crate::i18n::t("Ellipsoid"),
+            Self::Prism { .. } => crate::i18n::t("Prism"),
+            Self::Wedge { .. } => crate::i18n::t("Wedge"),
         }
     }
 }
@@ -704,7 +704,7 @@ pub enum HistoryOp {
 
 impl HistoryOp {
     /// Short operation label for the History panel.
-    pub const fn label(&self) -> &'static str {
+    pub fn label(&self) -> &'static str {
         match self {
             Self::AddPrimitive { kind } => kind.name(),
             Self::AddSketch { .. } => "Sketch",
@@ -1272,7 +1272,7 @@ pub(crate) fn resolve_face(shape: &Shape, reference: &FaceRef) -> Result<u32, St
     match candidates.as_slice() {
         [(index, _)] => Ok(*index),
         [(index, best), (_, second), ..] if *best < 0.6 * *second => Ok(*index),
-        _ => Err("无法唯一定位引用的面".to_owned()),
+        _ => Err(crate::i18n::t("Could not uniquely resolve the referenced face").to_owned()),
     }
 }
 
@@ -1329,7 +1329,7 @@ pub(crate) fn resolve_edge(shape: &Shape, reference: &EdgeRef) -> Result<u32, St
     match distinct.as_slice() {
         [(index, _, _)] => Ok(*index),
         [(index, best, _), (_, second, _), ..] if *best < 0.6 * *second => Ok(*index),
-        _ => Err("无法唯一定位引用的边".to_owned()),
+        _ => Err(crate::i18n::t("Could not uniquely resolve the referenced edge").to_owned()),
     }
 }
 
@@ -2285,7 +2285,7 @@ mod tests {
         let compound = Shape::compound(vec![first, second]).unwrap();
         assert_eq!(
             resolve_face(&compound, &reference).unwrap_err(),
-            "无法唯一定位引用的面"
+            crate::i18n::t("Could not uniquely resolve the referenced face")
         );
     }
 

@@ -45,7 +45,7 @@ pub fn aggregate_properties<'a>(
         );
     }
     if parts.is_empty() {
-        return Err("未选择实体".to_owned());
+        return Err(crate::i18n::t("No body selected").to_owned());
     }
     let volume: f64 = parts.iter().map(|part| part.volume).sum();
     let area = parts.iter().map(|part| part.area).sum();

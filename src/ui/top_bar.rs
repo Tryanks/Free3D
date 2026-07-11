@@ -8,6 +8,7 @@ use gpui::{
 use crate::{
     app::Free3dApp,
     commands::AppCommand,
+    i18n::{LangChoice, ZH_ENDONYM},
     nav::NavPreset,
     ui::{self, glyph},
     units::Units,
@@ -40,12 +41,12 @@ fn left_pill(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
         .px(theme.space(1.0))
         .child(
             ui::icon_button(theme, "home", "home", false)
-                .tooltip(ui::tip(theme, "主页", None))
+                .tooltip(ui::tip(theme, crate::i18n::t("Home"), None))
                 .on_click(cx.listener(|_, _, _window, _cx| {})),
         )
         .child(
             ui::icon_button(theme, "sync", "sync", false)
-                .tooltip(ui::tip(theme, "同步", None))
+                .tooltip(ui::tip(theme, crate::i18n::t("Sync"), None))
                 .on_click(cx.listener(|_, _, _window, _cx| {})),
         )
         .child(ui::divider(theme, true))
@@ -91,20 +92,20 @@ fn right_pill(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
                         .hover(|s| s.bg(theme.hover))
                         .cursor_pointer()
                         .child(glyph(theme, "share").size(px(theme.icon - 3.0)))
-                        .child("分享")
+                        .child(crate::i18n::t("Share"))
                         .on_click(cx.listener(|_, _, _window, _cx| {})),
                 )
                 .child(ui::divider(theme, true))
                 .child(
                     ui::icon_button(theme, "settings", "settings", app.show_settings)
-                        .tooltip(ui::tip(theme, "设置", None))
+                        .tooltip(ui::tip(theme, crate::i18n::t("Settings"), None))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.dispatch(AppCommand::OpenSettings, window, cx)
                         })),
                 )
                 .child(
                     ui::icon_button(theme, "help", "help", false)
-                        .tooltip(ui::tip(theme, "帮助", None))
+                        .tooltip(ui::tip(theme, crate::i18n::t("Help"), None))
                         .on_click(cx.listener(|_, _, _window, _cx| {})),
                 ),
         )
@@ -144,7 +145,7 @@ fn settings_popover(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEl
         .flex()
         .flex_col()
         .gap(theme.space(2.0))
-        .child(settings_label(theme, "主题"))
+        .child(settings_label(theme, crate::i18n::t("Theme")))
         .child(
             div()
                 .flex()
@@ -153,7 +154,10 @@ fn settings_popover(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEl
                 .child(theme_button(app, false, cx)),
         )
         .child(ui::divider(theme, false))
-        .child(settings_label(theme, "导航预设"))
+        .child(settings_label(theme, crate::i18n::t("Language")))
+        .child(language_buttons(app, cx))
+        .child(ui::divider(theme, false))
+        .child(settings_label(theme, crate::i18n::t("Navigation Preset")))
         .child(
             div()
                 .id("nav-preset-select")
@@ -177,19 +181,34 @@ fn settings_popover(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEl
         )
         .child(preset_menu)
         .child(ui::divider(theme, false))
-        .child(settings_label(theme, "单位"))
+        .child(settings_label(theme, crate::i18n::t("Units")))
         .child(unit_buttons(app, cx))
         .child(ui::divider(theme, false))
-        .child(settings_label(theme, "自动保存间隔（秒，0 = 关闭）"))
+        .child(settings_label(
+            theme,
+            crate::i18n::t("Autosave interval (seconds, 0 = off)"),
+        ))
         .child(autosave_buttons(app, cx))
         .child(ui::divider(theme, false))
-        .child(settings_label(theme, "文件"))
+        .child(settings_label(theme, crate::i18n::t("Files")))
         .child(
             div()
                 .flex()
                 .gap(theme.space(1.0))
-                .child(file_button(app, "导入", "import", AppCommand::Import, cx))
-                .child(file_button(app, "导出", "export", AppCommand::Export, cx)),
+                .child(file_button(
+                    app,
+                    crate::i18n::t("Import"),
+                    "import",
+                    AppCommand::Import,
+                    cx,
+                ))
+                .child(file_button(
+                    app,
+                    crate::i18n::t("Export"),
+                    "export",
+                    AppCommand::Export,
+                    cx,
+                )),
         )
         .when(!app.recent_files.is_empty(), |panel| {
             let mut recent = div().flex().flex_col().gap(px(1.0));
@@ -197,7 +216,7 @@ fn settings_popover(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEl
                 let label = path
                     .file_stem()
                     .and_then(|stem| stem.to_str())
-                    .unwrap_or("工程")
+                    .unwrap_or(crate::i18n::t("Project"))
                     .to_owned();
                 recent = recent.child(
                     div()
@@ -217,7 +236,7 @@ fn settings_popover(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEl
             }
             panel
                 .child(ui::divider(theme, false))
-                .child(settings_label(theme, "最近打开"))
+                .child(settings_label(theme, crate::i18n::t("Recent Files")))
                 .child(recent)
         });
 
@@ -230,6 +249,38 @@ fn settings_popover(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEl
             .child(panel),
     )
     .priority(2)
+}
+
+fn language_buttons(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+    let theme = &app.theme;
+    let mut row = div().flex().gap(theme.space(1.0));
+    for (choice, label) in [
+        (LangChoice::Auto, crate::i18n::t("Auto")),
+        (LangChoice::En, "English"),
+        (LangChoice::ZhCn, ZH_ENDONYM),
+    ] {
+        let selected = app.language == choice;
+        row = row.child(
+            div()
+                .id(("language", choice as usize))
+                .px(theme.space(1.5))
+                .h(px(30.0))
+                .flex()
+                .items_center()
+                .rounded(px(theme.radius_control))
+                .bg(theme.well)
+                .border_1()
+                .border_color(if selected { theme.accent } else { theme.border })
+                .text_color(if selected { theme.accent } else { theme.text })
+                .text_size(px(theme.text_sm))
+                .cursor_pointer()
+                .child(label)
+                .on_click(cx.listener(move |this, _, _window, cx| {
+                    this.set_language(choice, cx);
+                })),
+        );
+    }
+    row
 }
 
 fn autosave_buttons(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
@@ -312,7 +363,11 @@ fn theme_button(app: &Free3dApp, dark: bool, cx: &mut Context<Free3dApp>) -> imp
         .text_size(px(theme.text_md))
         .hover(|button| button.bg(theme.hover))
         .cursor_pointer()
-        .child(if dark { "深色" } else { "浅色" })
+        .child(if dark {
+            crate::i18n::t("Dark")
+        } else {
+            crate::i18n::t("Light")
+        })
         .on_click(cx.listener(move |this, _, _window, cx| {
             this.set_theme_variant(dark, cx);
         }))

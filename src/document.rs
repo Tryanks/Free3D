@@ -756,7 +756,13 @@ impl Document {
                         material: body.material,
                         cosmetic_threads: body.cosmetic_threads.clone(),
                     })
-                    .map_err(|error| format!("无法序列化实体 {}：{error}", body.name))
+                    .map_err(|error| {
+                        crate::i18n::tr2(
+                            "Could not serialize body {}: {}",
+                            &body.name,
+                            &error.to_string(),
+                        )
+                    })
             })
             .collect::<Result<Vec<_>, _>>()?;
         let project = ProjectFile {
@@ -795,34 +801,63 @@ impl Document {
             history: self.history.clone(),
             revision: self.revision,
         };
-        let json =
-            serde_json::to_vec(&project).map_err(|error| format!("无法编码工程文件：{error}"))?;
-        std::fs::write(path, json).map_err(|error| format!("无法写入 {}：{error}", path.display()))
+        let json = serde_json::to_vec(&project).map_err(|error| {
+            crate::i18n::tr1("Could not encode project file: {}", &error.to_string())
+        })?;
+        std::fs::write(path, json).map_err(|error| {
+            crate::i18n::tr2(
+                "Could not write {}: {}",
+                &path.display().to_string(),
+                &error.to_string(),
+            )
+        })
     }
 
     /// Loads a native project and rebuilds all runtime-only document state.
     pub fn load_from(path: &Path) -> Result<Self, String> {
-        let bytes =
-            std::fs::read(path).map_err(|error| format!("无法读取 {}：{error}", path.display()))?;
-        let header: ProjectHeader = serde_json::from_slice(&bytes)
-            .map_err(|error| format!("工程文件 JSON 已损坏：{error}"))?;
+        let bytes = std::fs::read(path).map_err(|error| {
+            crate::i18n::tr2(
+                "Could not read {}: {}",
+                &path.display().to_string(),
+                &error.to_string(),
+            )
+        })?;
+        let header: ProjectHeader = serde_json::from_slice(&bytes).map_err(|error| {
+            crate::i18n::tr1("Project file JSON is corrupt: {}", &error.to_string())
+        })?;
         if header.format != "free3d" {
-            return Err(format!("不支持的文件格式：{}", header.format));
+            return Err(crate::i18n::tr1(
+                "Unsupported file format: {}",
+                &header.format.to_string(),
+            ));
         }
         if header.version != 1 {
-            return Err(format!("不支持的文件版本：{}", header.version));
+            return Err(crate::i18n::tr1(
+                "Unsupported file version: {}",
+                &header.version.to_string(),
+            ));
         }
-        let project: ProjectFile = serde_json::from_slice(&bytes)
-            .map_err(|error| format!("工程文件 JSON 已损坏：{error}"))?;
+        let project: ProjectFile = serde_json::from_slice(&bytes).map_err(|error| {
+            crate::i18n::tr1("Project file JSON is corrupt: {}", &error.to_string())
+        })?;
         let bodies = project
             .bodies
             .into_iter()
             .map(|body| {
-                let bytes = BASE64
-                    .decode(&body.brep)
-                    .map_err(|error| format!("实体 {} 的 BREP 编码无效：{error}", body.name))?;
-                let shape = Shape::from_brep_data(&bytes)
-                    .map_err(|error| format!("无法恢复实体 {}：{error}", body.name))?;
+                let bytes = BASE64.decode(&body.brep).map_err(|error| {
+                    crate::i18n::tr2(
+                        "Body {} has invalid BREP data: {}",
+                        &body.name,
+                        &error.to_string(),
+                    )
+                })?;
+                let shape = Shape::from_brep_data(&bytes).map_err(|error| {
+                    crate::i18n::tr2(
+                        "Could not restore body {}: {}",
+                        &body.name,
+                        &error.to_string(),
+                    )
+                })?;
                 Ok(Body {
                     id: body.id,
                     name: body.name,
@@ -850,7 +885,9 @@ impl Document {
                         origin: image.origin,
                         visible: image.visible,
                     })
-                    .map_err(|error| format!("参考图像编码无效：{error}"))
+                    .map_err(|error| {
+                        crate::i18n::tr1("Reference image data is invalid: {}", &error.to_string())
+                    })
             })
             .collect::<Result<Vec<_>, _>>()?;
         let mut document = Self {
@@ -926,7 +963,7 @@ impl Document {
         self.push_undo();
         let id = PlaneId(self.next_plane_id);
         self.next_plane_id += 1;
-        let name = format!("Construction Plane {}", id.0);
+        let name = format!("{} {}", crate::i18n::t("Construction Plane"), id.0);
         self.construction_planes.push(ConstructionPlane {
             id,
             name,
@@ -958,7 +995,7 @@ impl Document {
         let direction = direction.normalize();
         self.construction_axes.push(ConstructionAxis {
             id,
-            name: format!("Construction Axis {}", id.0),
+            name: format!("{} {}", crate::i18n::t("Construction Axis"), id.0),
             origin,
             direction,
             visible: true,
@@ -980,7 +1017,7 @@ impl Document {
         self.next_point_id += 1;
         self.construction_points.push(ConstructionPoint {
             id,
-            name: format!("Construction Point {}", id.0),
+            name: format!("{} {}", crate::i18n::t("Construction Point"), id.0),
             position,
             visible: true,
         });
@@ -1954,8 +1991,8 @@ impl Document {
                 None => {
                     variable.error = Some(
                         expr::first_unknown_identifier(&variable.expr, &resolver)
-                            .map(|name| format!("未定义变量 {name}"))
-                            .unwrap_or_else(|| "表达式无效".to_owned()),
+                            .map(|name| crate::i18n::tr1("Undefined variable {}", &name))
+                            .unwrap_or_else(|| crate::i18n::t("Expression is invalid").to_owned()),
                     );
                 }
             }
@@ -1980,8 +2017,15 @@ impl Document {
                     None => {
                         operation_error = Some(
                             expr::first_unknown_identifier(source, &resolver)
-                                .map(|name| format!("特征表达式引用未定义变量 {name}"))
-                                .unwrap_or_else(|| "特征表达式无效".to_owned()),
+                                .map(|name| {
+                                    crate::i18n::tr1(
+                                        "Feature expression references undefined variable {}",
+                                        &name,
+                                    )
+                                })
+                                .unwrap_or_else(|| {
+                                    crate::i18n::t("Feature expression is invalid").to_owned()
+                                }),
                         );
                     }
                 }
@@ -2021,10 +2065,10 @@ impl Document {
                         .or(last_changed)
                         .and_then(|index| self.variables.get_mut(index))
                     {
-                        variable.error = Some(format!(
-                            "历史步骤 {} 重算失败：{}",
-                            error.step_index + 1,
-                            error.message
+                        variable.error = Some(crate::i18n::tr2(
+                            "History step {} recompute failed: {}",
+                            &(error.step_index + 1).to_string(),
+                            &error.message,
                         ));
                     }
                     return;
@@ -2052,8 +2096,8 @@ impl Document {
                     constraint.set_expression_result(Some(value), None);
                 } else {
                     let message = expr::first_unknown_identifier(&source, &resolver)
-                        .map(|name| format!("未定义变量 {name}"))
-                        .unwrap_or_else(|| "表达式无效".to_owned());
+                        .map(|name| crate::i18n::tr1("Undefined variable {}", &name))
+                        .unwrap_or_else(|| crate::i18n::t("Expression is invalid").to_owned());
                     constraint.set_expression_result(None, Some(message));
                 }
             }
@@ -2064,8 +2108,9 @@ impl Document {
             } else {
                 self.sketches[index].constraints = attempted_constraints;
                 for constraint_index in expression_indices {
-                    self.sketches[index].constraints[constraint_index]
-                        .set_expression_error(Some("约束求解未收敛".to_owned()));
+                    self.sketches[index].constraints[constraint_index].set_expression_error(Some(
+                        crate::i18n::t("Constraint solver did not converge").to_owned(),
+                    ));
                 }
             }
             self.sketch_dirty.insert(id);
@@ -4286,7 +4331,7 @@ mod tests {
             document.variables[variable]
                 .error
                 .as_deref()
-                .is_some_and(|error| error.contains("重算失败"))
+                .is_some_and(|error| error.contains(crate::i18n::t("recompute failed")))
         );
         let HistoryOp::Extrude { distance, .. } = &document.history[1].op else {
             panic!("expected extrude")
@@ -4412,7 +4457,7 @@ mod tests {
         assert_eq!(document.variables[b].value, 40.0);
         assert_eq!(
             document.variables[b].error.as_deref(),
-            Some("未定义变量 missing")
+            Some(crate::i18n::t("Undefined variable missing"))
         );
     }
 
@@ -5288,7 +5333,7 @@ mod tests {
                 8.0,
                 0.5,
             ));
-        source.drawing.sheet_mut().title.project_name = "装配项目".into();
+        source.drawing.sheet_mut().title.project_name = crate::i18n::t("Assembly Project").into();
         source.drawing.sheet_mut().title.author = "Free3D".into();
         source.drawing.add_sheet();
         source.drawing.sheet_mut().title.drawing_number = "F3D-002".into();
@@ -5304,7 +5349,10 @@ mod tests {
         assert_eq!(loaded.drawing, source.drawing);
         assert_eq!(loaded.drawing.sheet().views[0].id, view);
         assert_eq!(loaded.drawing.sheets.len(), 2);
-        assert_eq!(loaded.drawing.sheets[0].title.project_name, "装配项目");
+        assert_eq!(
+            loaded.drawing.sheets[0].title.project_name,
+            crate::i18n::t("Assembly Project")
+        );
         assert_eq!(loaded.drawing.sheets[1].title.drawing_number, "F3D-002");
         assert_eq!(loaded.history.len(), source.history.len());
         assert_eq!(loaded.active_sketch, source.active_sketch);
@@ -5356,7 +5404,7 @@ mod tests {
         let error = Document::load_from(&path)
             .err()
             .expect("newer version must fail");
-        assert!(error.starts_with("不支持的文件版本"));
+        assert!(error.starts_with(crate::i18n::t("Unsupported file version")));
 
         std::fs::write(&path, b"{ definitely not json").unwrap();
         assert!(Document::load_from(&path).is_err());

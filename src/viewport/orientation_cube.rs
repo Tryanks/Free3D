@@ -2,7 +2,7 @@
 
 use std::{fs, path::Path};
 
-use ab_glyph::{Font, FontVec, PxScale, point};
+use ab_glyph::{Font, FontVec, PxScale, ScaleFont, point};
 use glam::{Mat4, Vec2, Vec3, Vec4};
 
 /// Logical inset from the viewport's top-right corner.
@@ -23,8 +23,8 @@ pub const LABEL_ATLAS_WIDTH: u32 = LABEL_CELL_SIZE * LABEL_CELL_COUNT;
 pub struct FaceLabel {
     /// Face region carrying this label.
     pub region: Region,
-    /// Chinese character rasterized into the atlas.
-    pub glyph: char,
+    /// English lookup key rasterized into the atlas in the current language.
+    pub key: &'static str,
     /// Zero-based atlas cell.
     pub cell: u32,
     /// World direction that appears right in the face's standard view.
@@ -35,24 +35,24 @@ pub struct FaceLabel {
 
 /// Face-label table in atlas order: top, bottom, front, back, left, right.
 pub const FACE_LABELS: [FaceLabel; 6] = [
-    face_label([0, 0, 1], '顶', 0, [0, -1, 0], [1, 0, 0]),
-    face_label([0, 0, -1], '底', 1, [0, -1, 0], [-1, 0, 0]),
-    face_label([0, -1, 0], '前', 2, [1, 0, 0], [0, 0, 1]),
-    face_label([0, 1, 0], '后', 3, [-1, 0, 0], [0, 0, 1]),
-    face_label([-1, 0, 0], '左', 4, [0, -1, 0], [0, 0, 1]),
-    face_label([1, 0, 0], '右', 5, [0, 1, 0], [0, 0, 1]),
+    face_label([0, 0, 1], "Top", 0, [0, -1, 0], [1, 0, 0]),
+    face_label([0, 0, -1], "Bottom", 1, [0, -1, 0], [-1, 0, 0]),
+    face_label([0, -1, 0], "Front", 2, [1, 0, 0], [0, 0, 1]),
+    face_label([0, 1, 0], "Back", 3, [-1, 0, 0], [0, 0, 1]),
+    face_label([-1, 0, 0], "Left", 4, [0, -1, 0], [0, 0, 1]),
+    face_label([1, 0, 0], "Right", 5, [0, 1, 0], [0, 0, 1]),
 ];
 
 const fn face_label(
     signs: [i8; 3],
-    glyph: char,
+    key: &'static str,
     cell: u32,
     right: [i8; 3],
     up: [i8; 3],
 ) -> FaceLabel {
     FaceLabel {
         region: Region { signs },
-        glyph,
+        key,
         cell,
         right,
         up,
@@ -98,30 +98,34 @@ fn load_font(path: &Path) -> Option<FontVec> {
 }
 
 fn rasterize_glyph(font: &FontVec, label: FaceLabel, atlas: &mut [u8]) {
-    let scale = PxScale::from(48.0);
-    let glyph_id = font.glyph_id(label.glyph);
-    let initial = font.outline_glyph(glyph_id.with_scale_and_position(scale, point(0.0, 0.0)));
-    let Some(initial) = initial else {
-        return;
-    };
-    let bounds = initial.px_bounds();
-    let position = point(
-        (LABEL_CELL_SIZE as f32 - bounds.width()) * 0.5 - bounds.min.x,
-        (LABEL_CELL_SIZE as f32 - bounds.height()) * 0.5 - bounds.min.y,
-    );
-    let Some(outlined) = font.outline_glyph(glyph_id.with_scale_and_position(scale, position))
-    else {
-        return;
-    };
-    let bounds = outlined.px_bounds();
-    outlined.draw(|x, y, coverage| {
-        let atlas_x = label.cell * LABEL_CELL_SIZE + bounds.min.x.max(0.0) as u32 + x;
-        let atlas_y = bounds.min.y.max(0.0) as u32 + y;
-        if atlas_x < LABEL_ATLAS_WIDTH && atlas_y < LABEL_CELL_SIZE {
-            atlas[(atlas_y * LABEL_ATLAS_WIDTH + atlas_x) as usize] =
-                (coverage * 255.0).round() as u8;
-        }
-    });
+    let text = crate::i18n::t(label.key);
+    let scale = PxScale::from(if text.chars().count() > 2 { 17.0 } else { 42.0 });
+    let scaled = font.as_scaled(scale);
+    let width: f32 = text
+        .chars()
+        .map(|character| scaled.h_advance(font.glyph_id(character)))
+        .sum();
+    let mut pen_x = (LABEL_CELL_SIZE as f32 - width) * 0.5;
+    let baseline = (LABEL_CELL_SIZE as f32 + scaled.ascent() - scaled.descent()) * 0.5;
+    for character in text.chars() {
+        let glyph_id = font.glyph_id(character);
+        let Some(outlined) =
+            font.outline_glyph(glyph_id.with_scale_and_position(scale, point(pen_x, baseline)))
+        else {
+            pen_x += scaled.h_advance(glyph_id);
+            continue;
+        };
+        let bounds = outlined.px_bounds();
+        outlined.draw(|x, y, coverage| {
+            let atlas_x = label.cell * LABEL_CELL_SIZE + bounds.min.x.max(0.0) as u32 + x;
+            let atlas_y = bounds.min.y.max(0.0) as u32 + y;
+            if atlas_x < (label.cell + 1) * LABEL_CELL_SIZE && atlas_y < LABEL_CELL_SIZE {
+                atlas[(atlas_y * LABEL_ATLAS_WIDTH + atlas_x) as usize] =
+                    (coverage * 255.0).round() as u8;
+            }
+        });
+        pen_x += scaled.h_advance(glyph_id);
+    }
 }
 
 /// One of the cube's six faces, twelve edges, or eight corners.
@@ -345,16 +349,16 @@ mod tests {
     #[test]
     fn face_glyph_cells_match_standard_view_orientations() {
         let expected = [
-            (StandardView::Top, [0, 0, 1], '顶', 0),
-            (StandardView::Bottom, [0, 0, -1], '底', 1),
-            (StandardView::Front, [0, -1, 0], '前', 2),
-            (StandardView::Back, [0, 1, 0], '后', 3),
-            (StandardView::Left, [-1, 0, 0], '左', 4),
-            (StandardView::Right, [1, 0, 0], '右', 5),
+            (StandardView::Top, [0, 0, 1], "Top", 0),
+            (StandardView::Bottom, [0, 0, -1], "Bottom", 1),
+            (StandardView::Front, [0, -1, 0], "Front", 2),
+            (StandardView::Back, [0, 1, 0], "Back", 3),
+            (StandardView::Left, [-1, 0, 0], "Left", 4),
+            (StandardView::Right, [1, 0, 0], "Right", 5),
         ];
-        for (view, signs, glyph, cell) in expected {
+        for (view, signs, key, cell) in expected {
             let label = face_label_for(Region { signs }).expect("face has a label");
-            assert_eq!((label.glyph, label.cell), (glyph, cell));
+            assert_eq!((label.key, label.cell), (key, cell));
 
             let (yaw, pitch) = view.orientation();
             let forward = Vec3::new(
@@ -364,7 +368,7 @@ mod tests {
             );
             assert!(
                 forward.distance(-label.region.direction()) < 0.002,
-                "{view:?} does not look toward the {glyph} face"
+                "{view:?} does not look toward the {key} face"
             );
         }
     }

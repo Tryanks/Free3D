@@ -198,7 +198,7 @@ fn variables_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEle
                 .text_size(px(theme.text_sm))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(theme.text_faint)
-                .child("变量")
+                .child(crate::i18n::t("Variables"))
                 .child(
                     div()
                         .id("add-variable")
@@ -250,7 +250,7 @@ fn items_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
     rows.extend(document.sketches.iter().enumerate().map(|(index, sketch)| {
         ItemRow {
             kind: ItemKind::Sketch(sketch.id),
-            name: format!("Sketch {}", index + 1).into(),
+            name: format!("{} {}", crate::i18n::t("Sketch"), index + 1).into(),
             color: theme.axis_y,
             visible: sketch.visible,
             selected: document.active_sketch == Some(sketch.id)
@@ -335,9 +335,9 @@ fn items_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
                     theme.text_faint
                 })
                 .child(if over_constrained {
-                    "关节 · 过约束"
+                    crate::i18n::t("Joints · Over-constrained")
                 } else {
-                    "关节"
+                    crate::i18n::t("Joint")
                 }),
         );
     }
@@ -345,11 +345,11 @@ fn items_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
         let id = joint.id;
         let (a, b) = (joint.a.0, joint.b.0);
         let kind = match joint.kind {
-            JointKind::Fixed => "固定",
-            JointKind::Revolute => "旋转",
-            JointKind::Slider => "滑动",
-            JointKind::Cylindrical => "圆柱",
-            JointKind::Ball => "球",
+            JointKind::Fixed => crate::i18n::t("Fixed"),
+            JointKind::Revolute => crate::i18n::t("Revolute"),
+            JointKind::Slider => crate::i18n::t("Slider"),
+            JointKind::Cylindrical => crate::i18n::t("Cylindrical"),
+            JointKind::Ball => crate::i18n::t("Ball"),
         };
         let value = match joint.kind {
             JointKind::Revolute => format!("{:.1}°", joint.value.to_degrees()),
@@ -426,7 +426,7 @@ fn items_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
         .flex()
         .flex_col()
         .pb(theme.space(1.5))
-        .child(panel_header(theme, "项目"))
+        .child(panel_header(theme, crate::i18n::t("Items")))
         .child(list)
 }
 
@@ -442,7 +442,7 @@ fn history_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEleme
         .flex()
         .flex_col()
         .pb(theme.space(1.5))
-        .child(panel_header(theme, "历史记录"))
+        .child(panel_header(theme, crate::i18n::t("History")))
         .child(list)
 }
 

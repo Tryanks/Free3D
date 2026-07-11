@@ -22,7 +22,11 @@ pub fn fuzzy_subsequence(query: &str, candidate: &str) -> bool {
 pub fn filtered_commands(query: &str) -> Vec<SearchCommand> {
     SearchCommand::all()
         .into_iter()
-        .filter(|command| fuzzy_subsequence(query.trim(), command.label()))
+        .filter(|command| {
+            let label = command.label();
+            fuzzy_subsequence(query.trim(), label)
+                || fuzzy_subsequence(query.trim(), crate::i18n::english_key(label))
+        })
         .collect()
 }
 
@@ -86,7 +90,9 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> Option<impl IntoE
                                     .child(glyph(theme, "search")),
                             )
                             .child(if app.command_query.is_empty() {
-                                div().text_color(theme.text_faint).child("搜索命令…")
+                                div()
+                                    .text_color(theme.text_faint)
+                                    .child(crate::i18n::t("Search commands…"))
                             } else {
                                 div()
                                     .text_color(theme.text)

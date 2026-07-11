@@ -151,6 +151,7 @@ struct OrientationCubeGpu {
     hover_groups: Vec<wgpu::BindGroup>,
     hover_tint_buffers: Vec<wgpu::Buffer>,
     label_bind_group: wgpu::BindGroup,
+    label_texture: wgpu::Texture,
 }
 
 /// A CPU image returned in gpui's native BGRA byte order.
@@ -685,7 +686,7 @@ impl Renderer {
             cube_hover_groups.push(group);
             cube_hover_tint_buffers.push(buffer);
         }
-        let (cube_pipeline, label_bind_group) = create_cube_pipeline(
+        let (cube_pipeline, label_bind_group, label_texture) = create_cube_pipeline(
             &device,
             &queue,
             &bind_group_layout,
@@ -702,6 +703,7 @@ impl Renderer {
             hover_groups: cube_hover_groups,
             hover_tint_buffers: cube_hover_tint_buffers,
             label_bind_group,
+            label_texture,
         };
         Ok(Self {
             device,
@@ -765,6 +767,26 @@ impl Renderer {
             reference_images: None,
             canvas_theme,
         })
+    }
+
+    /// Rebuilds the orientation-cube label atlas for the current language.
+    pub fn refresh_orientation_labels(&mut self) {
+        let atlas = orientation_cube::build_label_atlas().unwrap_or_else(|| {
+            vec![
+                0;
+                (orientation_cube::LABEL_ATLAS_WIDTH * orientation_cube::LABEL_CELL_SIZE) as usize
+            ]
+        });
+        self.queue.write_texture(
+            self.orientation_cube.label_texture.as_image_copy(),
+            &atlas,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(orientation_cube::LABEL_ATLAS_WIDTH),
+                rows_per_image: Some(orientation_cube::LABEL_CELL_SIZE),
+            },
+            self.orientation_cube.label_texture.size(),
+        );
     }
 
     /// Uploads visible embedded images as non-pickable plane-local textured quads.
@@ -2081,7 +2103,7 @@ fn create_cube_pipeline(
     scene_layout: &wgpu::BindGroupLayout,
     shader: &wgpu::ShaderModule,
     atlas: Option<Vec<u8>>,
-) -> (wgpu::RenderPipeline, wgpu::BindGroup) {
+) -> (wgpu::RenderPipeline, wgpu::BindGroup, wgpu::Texture) {
     let label_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("orientation cube label layout"),
         entries: &[
@@ -2205,7 +2227,7 @@ fn create_cube_pipeline(
         multiview_mask: None,
         cache: None,
     });
-    (pipeline, label_bind_group)
+    (pipeline, label_bind_group, atlas_texture)
 }
 
 fn cube_region_color(theme: CanvasTheme, region: Region) -> [f32; 4] {
