@@ -33,8 +33,8 @@ use crate::{
     kernel::{BodyMesh, tessellate},
     nav::{GestureKind, NavAction, NavPreset, resolve, scroll_gesture},
     pick::{
-        EDGE_PICK_THRESHOLD_PX, EdgeHit, FaceHit, PickBody, edge_wins_over_face, fit_straight_edge,
-        pick_all, pick_edge, pick_face,
+        EDGE_PICK_THRESHOLD_PX, EdgeHit, FaceHit, PickBody, edge_vertices, edge_wins_over_face,
+        fit_straight_edge, pick_all, pick_edge, pick_face, pick_vertex,
     },
     saved_views::SavedView,
     sketch::{
@@ -237,6 +237,35 @@ fn point_segment_distance(point: Vec2, a: Vec2, b: Vec2) -> f32 {
     point.distance(a + segment * t)
 }
 
+fn offset_face_frame(shape: &occt::Shape, face_index: u32) -> Option<(DVec3, DVec3)> {
+    if let Some(frame) = face_frame(shape, face_index) {
+        return Some(frame);
+    }
+    let origin = shape.face_center_of_mass(face_index as usize).ok()?;
+    let mut normal = shape
+        .face_normal_at(face_index as usize, origin)
+        .ok()?
+        .normalize_or_zero();
+    if shape.face_is_reversed(face_index as usize).ok()? {
+        normal = -normal;
+    }
+    (origin.is_finite() && normal.length_squared() > 0.99).then_some((origin, normal))
+}
+
+fn snap_distance_to_plane(
+    drag_origin: DVec3,
+    drag_direction: DVec3,
+    plane_origin: DVec3,
+    plane_normal: DVec3,
+) -> Option<f64> {
+    let direction = drag_direction.normalize_or_zero();
+    let normal = plane_normal.normalize_or_zero();
+    let denominator = normal.dot(direction);
+    (denominator.abs() > 0.999)
+        .then_some((plane_origin - drag_origin).dot(normal) / denominator)
+        .filter(|distance| distance.is_finite())
+}
+
 const ARROW_SURFACE_OFFSET: f32 = 0.06;
 const ARROW_HALF_LENGTH: f32 = 0.30;
 
@@ -289,12 +318,18 @@ fn solve_arrow_chip_anchor(
             flipped: true,
         }
     } else {
-        let corners = [
+        // Fall back to the viewport corner closest to the arrow so the chips
+        // stay near the interaction instead of jumping across the screen.
+        let mut corners = [
             minimum_anchor,
             Vec2::new(maximum.x, minimum_anchor.y),
             Vec2::new(minimum_anchor.x, maximum.y),
             maximum,
         ];
+        corners.sort_by(|left, right| {
+            left.distance(segment.1)
+                .total_cmp(&right.distance(segment.1))
+        });
         let anchor = corners
             .into_iter()
             .find(|anchor| !intersects(*anchor))
@@ -342,6 +377,7 @@ fn selection_count_label(language: crate::i18n::Lang, items: &[SelItem]) -> Stri
             SelItem::Face(_, _) => 0,
             SelItem::Edge(_, _) => 1,
             SelItem::Body(_) => 2,
+            SelItem::Vertex(_, _) => 4,
             _ => 3,
         };
         items
@@ -349,7 +385,10 @@ fn selection_count_label(language: crate::i18n::Lang, items: &[SelItem]) -> Stri
             .all(|item| {
                 matches!(
                     (discriminant, item),
-                    (0, SelItem::Face(_, _)) | (1, SelItem::Edge(_, _)) | (2, SelItem::Body(_))
+                    (0, SelItem::Face(_, _))
+                        | (1, SelItem::Edge(_, _))
+                        | (2, SelItem::Body(_))
+                        | (4, SelItem::Vertex(_, _))
                 )
             })
             .then_some(discriminant)
@@ -361,6 +400,7 @@ fn selection_count_label(language: crate::i18n::Lang, items: &[SelItem]) -> Stri
                 Some(0) => crate::i18n::translate_for(language, "Face"),
                 Some(1) => crate::i18n::translate_for(language, "Edge"),
                 Some(2) => crate::i18n::translate_for(language, "Body"),
+                Some(4) => crate::i18n::translate_for(language, "Vertex"),
                 _ => crate::i18n::translate_for(language, "Selected Items"),
             }
         ),
@@ -372,6 +412,8 @@ fn selection_count_label(language: crate::i18n::Lang, items: &[SelItem]) -> Stri
                 Some(1) => "Edges",
                 Some(2) if count == 1 => "Body",
                 Some(2) => "Bodies",
+                Some(4) if count == 1 => "Vertex",
+                Some(4) => "Vertices",
                 _ => "Items",
             };
             format!("{count} {}", crate::i18n::translate_for(language, noun))
@@ -384,6 +426,9 @@ fn current_selection_count_label(items: &[SelItem]) -> String {
     let all_faces = items.iter().all(|item| matches!(item, SelItem::Face(_, _)));
     let all_edges = items.iter().all(|item| matches!(item, SelItem::Edge(_, _)));
     let all_bodies = items.iter().all(|item| matches!(item, SelItem::Body(_)));
+    let all_vertices = items
+        .iter()
+        .all(|item| matches!(item, SelItem::Vertex(_, _)));
     let key = if crate::i18n::lang() == crate::i18n::Lang::ZhCn {
         if all_faces {
             "Face"
@@ -391,6 +436,8 @@ fn current_selection_count_label(items: &[SelItem]) -> String {
             "Edge"
         } else if all_bodies {
             "Body"
+        } else if all_vertices {
+            "Vertex"
         } else {
             "Selected Items"
         }
@@ -406,6 +453,10 @@ fn current_selection_count_label(items: &[SelItem]) -> String {
         "Body"
     } else if all_bodies {
         "Bodies"
+    } else if all_vertices && count == 1 {
+        "Vertex"
+    } else if all_vertices {
+        "Vertices"
     } else {
         "Items"
     };
@@ -483,6 +534,9 @@ struct ExtrudeInteraction {
     last_preview_distance: Option<f64>,
     opposite_phase: bool,
     expressions: [Option<String>; 2],
+    target_faces: Vec<(BodyId, u32)>,
+    offset_face: bool,
+    snapped_to_face: bool,
 }
 
 struct ProfileExtrudeInteraction {
@@ -510,6 +564,54 @@ struct DressUpInteraction {
     last_preview_radius: Option<f64>,
     expression: Option<String>,
     variable_start_entered: bool,
+    mode: DressUpMode,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum DressUpMode {
+    #[default]
+    Auto,
+    Fillet,
+    Chamfer,
+}
+
+fn resolve_dressup_kind(mode: DressUpMode, signed_drag: f64) -> bool {
+    match mode {
+        DressUpMode::Auto => signed_drag >= 0.0,
+        DressUpMode::Fillet => true,
+        DressUpMode::Chamfer => false,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ArmedTool {
+    Extrude,
+    OffsetFace,
+    DressUp,
+    Shell,
+    Thicken,
+    Gizmo,
+}
+
+fn armed_tool_copy(tool: ArmedTool, language: crate::i18n::Lang) -> (&'static str, &'static str) {
+    let (name, hint) = match tool {
+        ArmedTool::Extrude => ("Extrude", "Drag the arrow to extrude the face"),
+        ArmedTool::OffsetFace => ("Offset Face", "Drag the arrow to offset the face in or out"),
+        ArmedTool::DressUp => (
+            "Fillet / Chamfer",
+            "Drag away for a fillet or into the body for a chamfer",
+        ),
+        ArmedTool::Shell => ("Shell", "Drag the arrow to set the shell thickness"),
+        ArmedTool::Thicken => ("Thicken", "Drag the arrow to thicken the surface"),
+        ArmedTool::Gizmo => (
+            "Move/Rotate",
+            "Drag the gizmo to move or rotate the selection",
+        ),
+    };
+    (
+        crate::i18n::translate_for(language, name),
+        crate::i18n::translate_for(language, hint),
+    )
 }
 
 struct ShellInteraction {
@@ -1015,6 +1117,7 @@ pub struct Viewport {
     profile_extrude_drag: Option<ProfileExtrudeInteraction>,
     open_chain_extrude_drag: Option<OpenChainExtrudeInteraction>,
     dressup_drag: Option<DressUpInteraction>,
+    dressup_mode: DressUpMode,
     variable_fillet: bool,
     shell_drag: Option<ShellInteraction>,
     thicken_drag: Option<ThickenInteraction>,
@@ -1044,6 +1147,7 @@ pub struct Viewport {
     extrude_side_mode: ExtrudeSideMode,
     hovered_extrude_arrow: bool,
     arrow_options_expanded: bool,
+    tool_banner_collapsed: bool,
     hovered_cube: Option<CubeRegion>,
     cube_interaction: Option<CubeInteraction>,
     marquee: Option<MarqueeInteraction>,
@@ -1129,6 +1233,7 @@ impl Viewport {
             profile_extrude_drag: None,
             open_chain_extrude_drag: None,
             dressup_drag: None,
+            dressup_mode: DressUpMode::Auto,
             variable_fillet: false,
             shell_drag: None,
             thicken_drag: None,
@@ -1158,6 +1263,7 @@ impl Viewport {
             extrude_side_mode: ExtrudeSideMode::OneSided,
             hovered_extrude_arrow: false,
             arrow_options_expanded: true,
+            tool_banner_collapsed: crate::settings::load().tool_banner_collapsed,
             hovered_cube: None,
             cube_interaction: None,
             marquee: None,
@@ -1533,6 +1639,10 @@ impl Viewport {
         let body_id = item.body_id()?;
         let body = self.scene_meshes.iter().find(|body| body.id == body_id)?;
         match item {
+            SelItem::Vertex(_, vertex_index) => edge_vertices(&body.mesh)
+                .get(vertex_index as usize)
+                .copied()
+                .map(|point| body.pose.transform_point3(point)),
             SelItem::Edge(_, edge_index) => {
                 let edge = body.mesh.edges.get(edge_index as usize)?;
                 edge.points
@@ -2953,7 +3063,16 @@ impl Viewport {
 
     fn selected_offset_face(&self, cx: &Context<Self>) -> Option<(BodyId, u32, DVec3, DVec3, f64)> {
         let document = self.document.read(cx);
-        document.selection.items.iter().find_map(|item| {
+        if document.selection.items.is_empty()
+            || document
+                .selection
+                .items
+                .iter()
+                .any(|item| !matches!(item, SelItem::Face(_, _)))
+        {
+            return None;
+        }
+        document.selection.items.iter().rev().find_map(|item| {
             let SelItem::Face(body_id, face_index) = *item else {
                 return None;
             };
@@ -2961,7 +3080,7 @@ impl Viewport {
                 .bodies
                 .iter()
                 .find(|body| body.id == body_id && body.visible && body.kind == BodyKind::Solid)?;
-            let (origin, normal) = face_frame(&body.shape, face_index)?;
+            let (origin, normal) = offset_face_frame(&body.shape, face_index)?;
             let (minimum, maximum) = body.shape.aabb().ok()?;
             Some((
                 body_id,
@@ -2971,6 +3090,19 @@ impl Viewport {
                 (maximum - minimum).length().max(1.0),
             ))
         })
+    }
+
+    fn selected_offset_faces(&self, cx: &Context<Self>) -> Vec<(BodyId, u32)> {
+        self.document
+            .read(cx)
+            .selection
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                SelItem::Face(body, face) => Some((*body, *face)),
+                _ => None,
+            })
+            .collect()
     }
 
     fn selected_extrude_profile(
@@ -3076,7 +3208,11 @@ impl Viewport {
                 },
             )
         } else {
-            (if self.active_drag_tool == Some(ToolId::OffsetFace) {
+            (if self.active_drag_tool == Some(ToolId::OffsetFace)
+                || self.selected_offset_faces(cx).len() > 1
+                || (self.selected_offset_faces(cx).len() == 1
+                    && self.selected_extrude_face(cx).is_none())
+            {
                 self.selected_offset_face(cx)
             } else {
                 self.selected_extrude_face(cx)
@@ -3112,14 +3248,17 @@ impl Viewport {
         cx: &Context<Self>,
     ) -> Option<(BodyId, Vec<u32>, DVec3, DVec3, f64)> {
         let document = self.document.read(cx);
-        let body_id = document
+        let SelItem::Edge(body_id, last_edge) = *document.selection.items.last()? else {
+            return None;
+        };
+        if document
             .selection
             .items
             .iter()
-            .find_map(|item| match item {
-                SelItem::Edge(id, _) => Some(*id),
-                _ => None,
-            })?;
+            .any(|item| !matches!(item, SelItem::Edge(id, _) if *id == body_id))
+        {
+            return None;
+        }
         let edge_indices: Vec<_> = document
             .selection
             .items
@@ -3133,7 +3272,7 @@ impl Viewport {
             .bodies
             .iter()
             .find(|body| body.id == body_id && body.visible && body.kind == BodyKind::Solid)?;
-        let (origin, direction) = edge_frame(&body.shape, edge_indices[0])?;
+        let (origin, direction) = edge_frame(&body.shape, last_edge)?;
         let (minimum, maximum) = body.shape.aabb().ok()?;
         Some((
             body_id,
@@ -3235,7 +3374,13 @@ impl Viewport {
                         let (_, origin, direction, _) = self.selected_thicken(cx)?;
                         (origin, direction)
                     }
-                    _ => return self.extrude_arrow_state(cx),
+                    _ => {
+                        if let Some((_, _, origin, direction, _)) = self.selected_dressup(cx) {
+                            (origin, direction)
+                        } else {
+                            return self.extrude_arrow_state(cx);
+                        }
+                    }
                 }
             };
         let origin = origin.as_vec3();
@@ -3248,6 +3393,42 @@ impl Viewport {
                 || self.shell_drag.is_some()
                 || self.thicken_drag.is_some(),
         })
+    }
+
+    fn armed_tool(&self, cx: &Context<Self>) -> Option<ArmedTool> {
+        if self.gizmo_drag.is_some() {
+            return Some(ArmedTool::Gizmo);
+        }
+        if self.dressup_drag.is_some() || self.selected_dressup(cx).is_some() {
+            return Some(ArmedTool::DressUp);
+        }
+        if self.shell_drag.is_some() || self.active_drag_tool == Some(ToolId::Shell) {
+            return Some(ArmedTool::Shell);
+        }
+        if self.thicken_drag.is_some() || self.active_drag_tool == Some(ToolId::Thicken) {
+            return Some(ArmedTool::Thicken);
+        }
+        if self
+            .extrude_drag
+            .as_ref()
+            .is_some_and(|drag| drag.offset_face)
+            || self.active_drag_tool == Some(ToolId::OffsetFace)
+            || self.selected_offset_faces(cx).len() > 1
+            || (self.selected_offset_faces(cx).len() == 1
+                && self.selected_extrude_face(cx).is_none())
+        {
+            return Some(ArmedTool::OffsetFace);
+        }
+        if self.extrude_drag.is_some()
+            || self.profile_extrude_drag.is_some()
+            || self.open_chain_extrude_drag.is_some()
+            || self.selected_extrude_face(cx).is_some()
+            || self.selected_extrude_profile(cx).is_some()
+            || self.selected_open_chain(cx).is_some()
+        {
+            return Some(ArmedTool::Extrude);
+        }
+        self.gizmo_state(cx).map(|_| ArmedTool::Gizmo)
     }
 
     /// Arms a fillet, chamfer, shell, or Offset Face arrow for the selection.
@@ -5044,8 +5225,11 @@ impl Viewport {
     }
 
     fn begin_dressup_drag(&mut self, pointer: Vec2, cx: &Context<Self>) -> bool {
-        let Some(tool @ (ToolId::Fillet | ToolId::Chamfer)) = self.active_drag_tool else {
-            return false;
+        let mode = match self.active_drag_tool {
+            Some(ToolId::Fillet) => DressUpMode::Fillet,
+            Some(ToolId::Chamfer) => DressUpMode::Chamfer,
+            None => self.dressup_mode,
+            _ => return false,
         };
         let Some((body, edge_indices, origin, direction, bbox_diagonal)) =
             self.selected_dressup(cx)
@@ -5069,13 +5253,14 @@ impl Viewport {
                 direction,
                 radius: 0.01,
                 end_radius: None,
-                fillet: tool == ToolId::Fillet,
+                fillet: resolve_dressup_kind(mode, 0.0),
             },
             anchor: cursor_distance(ray.0, ray.1, origin, direction),
             bbox_diagonal,
             last_preview_radius: None,
             expression: None,
             variable_start_entered: false,
+            mode,
         });
         self.hovered_extrude_arrow = true;
         true
@@ -5086,13 +5271,14 @@ impl Viewport {
         let Some(interaction) = self.dressup_drag.as_mut() else {
             return;
         };
-        let radius = (cursor_distance(
+        let signed_drag = cursor_distance(
             ray.0,
             ray.1,
             interaction.drag.origin,
             interaction.drag.direction,
-        ) - interaction.anchor)
-            .max(0.01);
+        ) - interaction.anchor;
+        let radius = signed_drag.abs().max(0.01);
+        interaction.drag.fillet = resolve_dressup_kind(interaction.mode, signed_drag);
         interaction.drag.radius = radius;
         if self.variable_fillet {
             interaction.drag.end_radius = Some(radius);
@@ -5343,7 +5529,11 @@ impl Viewport {
             return false;
         }
         let ray = self.camera.unproject_ray(pointer);
-        let face = if self.active_drag_tool == Some(ToolId::OffsetFace) {
+        let selected_faces = self.selected_offset_faces(cx);
+        let implicit_offset = selected_faces.len() > 1
+            || (selected_faces.len() == 1 && self.selected_extrude_face(cx).is_none());
+        let offset_face = self.active_drag_tool == Some(ToolId::OffsetFace) || implicit_offset;
+        let face = if offset_face {
             self.selected_offset_face(cx)
         } else {
             self.selected_extrude_face(cx)
@@ -5367,7 +5557,7 @@ impl Viewport {
                     distance: 0.0,
                     opposite_distance: 0.0,
                     side_mode: self.extrude_side_mode,
-                    mode: if self.active_drag_tool == Some(ToolId::OffsetFace) {
+                    mode: if offset_face {
                         ExtrudeMode::Auto
                     } else {
                         self.extrude_mode
@@ -5378,6 +5568,13 @@ impl Viewport {
                 last_preview_distance: None,
                 opposite_phase: false,
                 expressions: [None, None],
+                target_faces: if offset_face {
+                    selected_faces
+                } else {
+                    vec![(body, face_index)]
+                },
+                offset_face,
+                snapped_to_face: false,
             });
             self.hovered_extrude_arrow = true;
             return true;
@@ -5530,6 +5727,26 @@ impl Viewport {
             self.renderer.set_preview_mesh(preview);
             return;
         }
+        let face_snap = self.extrude_drag.as_ref().and_then(|interaction| {
+            let bodies = self.pick_bodies();
+            let hit = pick_face(&bodies, ray.0, ray.1)?;
+            if (hit.body, hit.face) == (interaction.drag.body, interaction.drag.face_index) {
+                return None;
+            }
+            let body = self
+                .document
+                .read(cx)
+                .bodies
+                .iter()
+                .find(|body| body.id == hit.body)?;
+            let (plane_origin, plane_normal) = face_frame(&body.shape, hit.face)?;
+            snap_distance_to_plane(
+                interaction.drag.origin,
+                interaction.drag.normal,
+                plane_origin,
+                plane_normal,
+            )
+        });
         let Some(interaction) = self.extrude_drag.as_mut() else {
             return;
         };
@@ -5538,8 +5755,15 @@ impl Viewport {
         } else {
             interaction.drag.normal
         };
-        let distance =
+        let mut distance =
             cursor_distance(ray.0, ray.1, interaction.drag.origin, axis) - interaction.anchor;
+        interaction.snapped_to_face = false;
+        if !interaction.opposite_phase
+            && let Some(snapped) = face_snap
+        {
+            distance = snapped;
+            interaction.snapped_to_face = true;
+        }
         if interaction.opposite_phase {
             interaction.drag.opposite_distance = distance.abs();
         } else {
@@ -5553,7 +5777,11 @@ impl Viewport {
                     interaction.drag.opposite_distance.abs()
                 )
             } else {
-                format!("{distance:.1}")
+                if interaction.snapped_to_face {
+                    format!("{distance:.1}  🧲 → {}", crate::i18n::t("Face"))
+                } else {
+                    format!("{distance:.1}")
+                }
             },
             self.camera
                 .project((interaction.drag.origin + axis * distance).as_vec3())
@@ -5678,7 +5906,7 @@ impl Viewport {
         let Some(interaction) = self.extrude_drag.take() else {
             return;
         };
-        let offset_face = self.active_drag_tool == Some(ToolId::OffsetFace);
+        let offset_face = interaction.offset_face;
         if offset_face {
             self.active_drag_tool = None;
         }
@@ -5688,7 +5916,14 @@ impl Viewport {
             self.retessellate_only = Some(vec![interaction.drag.body]);
             self.document.update(cx, |document, cx| {
                 let applied = if offset_face {
-                    document.apply_offset_face(&interaction.drag)
+                    if interaction.target_faces.len() > 1 {
+                        document.apply_offset_faces(
+                            &interaction.target_faces,
+                            interaction.drag.distance,
+                        )
+                    } else {
+                        document.apply_offset_face(&interaction.drag)
+                    }
                 } else {
                     document.apply_extrude(&interaction.drag)
                 };
@@ -6119,6 +6354,16 @@ impl Viewport {
                     .flatten()
             });
         let edge = edge_wins_over_face(&bodies, &self.camera, edge, diagonal);
+        let threshold = EDGE_PICK_THRESHOLD_PX * self.device_scale.max(1.0);
+        let vertex = (!double_click && matches!(filter, SelectionFilter::Auto))
+            .then(|| pick_vertex(&bodies, &self.camera, pointer, threshold))
+            .flatten()
+            .filter(|hit| {
+                let (vertex_origin, vertex_ray) = self.camera.unproject_ray(hit.screen);
+                let epsilon = diagonal.max(1.0e-4) * crate::pick::EDGE_OCCLUSION_EPSILON_FRACTION;
+                pick_face(&bodies, vertex_origin, vertex_ray)
+                    .is_none_or(|face| hit.t <= face.t + epsilon)
+            });
         let mut candidates: Vec<_> = match (filter, double_click) {
             (SelectionFilter::Auto, true) | (SelectionFilter::Body, _) => faces
                 .iter()
@@ -6138,9 +6383,18 @@ impl Viewport {
         };
         match filter {
             SelectionFilter::Auto if !double_click => {
-                if let Some(hit) = edge {
+                if let Some(hit) = vertex {
                     candidates.insert(
                         0,
+                        PickCandidate {
+                            item: SelItem::Vertex(hit.body, hit.vertex),
+                            t: hit.t,
+                        },
+                    );
+                }
+                if let Some(hit) = edge {
+                    candidates.insert(
+                        usize::from(vertex.is_some()),
                         PickCandidate {
                             item: SelItem::Edge(hit.body, hit.edge),
                             t: hit.t,
@@ -6168,10 +6422,9 @@ impl Viewport {
         filter: SelectionFilter,
     ) -> (Vec<PickCandidate>, bool) {
         let candidates = self.pick_candidates(pointer, double_click, filter);
-        if candidates
-            .first()
-            .is_some_and(|candidate| matches!(candidate.item, SelItem::Edge(_, _)))
-        {
+        if candidates.first().is_some_and(|candidate| {
+            matches!(candidate.item, SelItem::Vertex(_, _) | SelItem::Edge(_, _))
+        }) {
             return (candidates.first().copied().into_iter().collect(), false);
         }
         let edge_and_face = candidates
@@ -7212,17 +7465,20 @@ impl Viewport {
                 }
                 let filter = self.document.read(cx).selection.filter;
                 let direct = self.construction_plane_at(pointer, cx);
+                let model_item = direct
+                    .is_none()
+                    .then(|| self.item_at(pointer, false, filter))
+                    .flatten();
+                let vertex = model_item.filter(|item| matches!(item, SelItem::Vertex(_, _)));
                 let hovered_edge = (direct.is_none()
+                    && vertex.is_none()
                     && matches!(filter, SelectionFilter::Auto | SelectionFilter::Edge))
                 .then(|| self.edge_hit_at(pointer))
                 .flatten()
                 .map(|hit| (hit.body, hit.edge));
-                let hovered = direct.or_else(|| {
-                    hovered_edge
-                        .is_none()
-                        .then(|| self.item_at(pointer, false, filter))
-                        .flatten()
-                });
+                let hovered = direct
+                    .or(vertex)
+                    .or_else(|| hovered_edge.is_none().then_some(model_item).flatten());
                 if hovered != self.hovered || hovered_edge != self.hovered_edge {
                     self.hovered = hovered;
                     self.hovered_edge = hovered_edge;
@@ -8690,6 +8946,9 @@ impl Viewport {
                 }
                 cx.notify();
             });
+            // The app-level key handler maps ⌘Z/⇧⌘Z too; without stopping
+            // propagation every press would undo or redo twice.
+            cx.stop_propagation();
             self.changed(window, cx);
         } else if key.eq_ignore_ascii_case("tab") {
             self.document.update(cx, |document, cx| {
@@ -9041,17 +9300,32 @@ impl Render for Viewport {
                         } else {
                             Vec2::ZERO
                         };
-                    (
-                        format!(
-                            "{} {}",
-                            self.units.display_compact(self.arrow_value()),
-                            self.units.symbol()
-                        ),
-                        position,
-                    )
+                    let mut label = format!(
+                        "{} {}",
+                        self.units.display_compact(self.arrow_value()),
+                        self.units.symbol()
+                    );
+                    if self
+                        .extrude_drag
+                        .as_ref()
+                        .is_some_and(|interaction| interaction.snapped_to_face)
+                    {
+                        label.push_str(&format!("  🧲 → {}", crate::i18n::t("Face")));
+                    }
+                    (label, position)
                 })
             })
             .flatten();
+        let dressup_mode_badges =
+            self.selected_dressup(cx)
+                .and_then(|_| arrow_chrome)
+                .map(|(layout, _)| {
+                    (
+                        self.dressup_mode,
+                        layout.anchor + Vec2::new(0.0, -30.0 * scale),
+                    )
+                });
+        let dressup_chrome_armed = dressup_mode_badges.is_some();
         let dressup_badges = (self.active_drag_tool == Some(ToolId::Fillet)
             || self
                 .dressup_drag
@@ -9206,12 +9480,51 @@ impl Render for Viewport {
                         SelItem::Edge(_, edge) => {
                             format!("{} · {body_name} · {}", crate::i18n::t("Edge"), edge + 1)
                         }
+                        SelItem::Vertex(_, vertex) => format!(
+                            "{} · {body_name} · {}",
+                            crate::i18n::t("Vertex"),
+                            vertex + 1
+                        ),
                         _ => String::new(),
                     };
                     (*candidate, label)
                 })
                 .collect::<Vec<_>>();
             (popup.position, popup.shift, rows)
+        });
+        let vertex_markers = {
+            let document = self.document.read(cx);
+            let mut items = document
+                .selection
+                .items
+                .iter()
+                .filter(|item| matches!(item, SelItem::Vertex(_, _)))
+                .copied()
+                .map(|item| (item, true))
+                .collect::<Vec<_>>();
+            if let Some(item @ SelItem::Vertex(_, _)) = self.hovered
+                && !items.iter().any(|(selected, _)| *selected == item)
+            {
+                items.push((item, false));
+            }
+            items
+                .into_iter()
+                .filter_map(|(item, selected)| {
+                    let SelItem::Vertex(body_id, vertex) = item else {
+                        return None;
+                    };
+                    let body = self.scene_meshes.iter().find(|body| body.id == body_id)?;
+                    let local = *edge_vertices(&body.mesh).get(vertex as usize)?;
+                    Some((
+                        self.camera.project(body.pose.transform_point3(local)),
+                        selected,
+                    ))
+                })
+                .collect::<Vec<_>>()
+        };
+        let tool_banner = self.armed_tool(cx).map(|tool| {
+            let (name, hint) = armed_tool_copy(tool, crate::i18n::lang());
+            (name, hint, self.tool_banner_collapsed)
         });
         div()
             .id("viewport")
@@ -9233,6 +9546,88 @@ impl Render for Viewport {
             .on_key_down(cx.listener(Self::key_down))
             .when_some(image, |element, image| {
                 element.child(img(ImageSource::Render(image)).size_full())
+            })
+            .children(vertex_markers.into_iter().enumerate().map(
+                |(index, (position, selected))| {
+                    let color = if selected {
+                        rgba(0x0f64bdff)
+                    } else {
+                        rgba(0x57b8efaa)
+                    };
+                    div()
+                        .id(("vertex-marker", index))
+                        .absolute()
+                        .left(px(position.x / scale - 4.0))
+                        .top(px(position.y / scale - 4.0))
+                        .w(px(8.0))
+                        .h(px(8.0))
+                        .rounded_full()
+                        .bg(color)
+                },
+            ))
+            .when_some(tool_banner, |element, (name, hint, collapsed)| {
+                let theme = &self.theme;
+                element.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .top(theme.space(3.0))
+                        .flex()
+                        .justify_center()
+                        .child(
+                            div()
+                                .id("active-tool-banner")
+                                .flex()
+                                .items_center()
+                                .gap(theme.space(2.0))
+                                .px(theme.space(3.0))
+                                .py(theme.space(1.5))
+                                .rounded(px(theme.radius_panel))
+                                .border_1()
+                                .border_color(theme.border)
+                                .bg(theme.panel)
+                                .shadow(theme.shadow.clone())
+                                .child(
+                                    div()
+                                        .text_size(px(theme.text_md))
+                                        .font_weight(gpui::FontWeight::BOLD)
+                                        .text_color(theme.text)
+                                        .child(name),
+                                )
+                                .when(!collapsed, |banner| {
+                                    banner.child(
+                                        div()
+                                            .text_size(px(theme.text_sm))
+                                            .text_color(theme.text_muted)
+                                            .child(hint),
+                                    )
+                                })
+                                .child(
+                                    div()
+                                        .id("tool-banner-collapse")
+                                        .cursor_pointer()
+                                        .text_color(theme.text_muted)
+                                        .child(if collapsed { "⌄" } else { "⌃" })
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(|this, _, _, cx| {
+                                                cx.stop_propagation();
+                                                this.tool_banner_collapsed =
+                                                    !this.tool_banner_collapsed;
+                                                let mut settings = crate::settings::load();
+                                                settings.tool_banner_collapsed =
+                                                    this.tool_banner_collapsed;
+                                                if let Err(error) = crate::settings::save(settings)
+                                                {
+                                                    eprintln!("failed to save settings: {error}");
+                                                }
+                                                cx.notify();
+                                            }),
+                                        ),
+                                ),
+                        ),
+                )
             })
             .when_some(marquee, |element, (rect, mode, accent)| {
                 let mut fill = accent;
@@ -9418,34 +9813,93 @@ impl Render for Viewport {
                         )),
                 )
             })
+            .when_some(dressup_mode_badges, |element, (active, position)| {
+                let theme = &self.theme;
+                element.child(
+                    div()
+                        .absolute()
+                        .left(px(position.x / scale))
+                        .top(px(position.y / scale))
+                        .flex()
+                        .gap(px(2.0))
+                        .children(
+                            [
+                                (DressUpMode::Auto, crate::i18n::t("Auto")),
+                                (DressUpMode::Fillet, crate::i18n::t("Fillet")),
+                                (DressUpMode::Chamfer, crate::i18n::t("Chamfer")),
+                            ]
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, (mode, label))| {
+                                div()
+                                    .id(("dressup-mode", index))
+                                    .px(theme.space(2.0))
+                                    .py(theme.space(1.0))
+                                    .rounded(px(theme.radius_control))
+                                    .border_1()
+                                    .border_color(theme.border)
+                                    .bg(if mode == active {
+                                        theme.accent_wash
+                                    } else {
+                                        theme.panel
+                                    })
+                                    .text_color(if mode == active {
+                                        theme.accent
+                                    } else {
+                                        theme.text
+                                    })
+                                    .text_size(px(theme.text_sm))
+                                    .cursor_pointer()
+                                    .child(label)
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |this, _, window, cx| {
+                                            cx.stop_propagation();
+                                            this.dressup_mode = mode;
+                                            this.active_drag_tool = None;
+                                            if let Some(interaction) = &mut this.dressup_drag {
+                                                interaction.mode = mode;
+                                            }
+                                            this.changed(window, cx);
+                                        }),
+                                    )
+                            }),
+                        ),
+                )
+            })
             .when_some(value_chip, |element, (label, position)| {
                 let theme = &self.theme;
+                // The distance-type chip belongs to the face offset/extrude
+                // arrow; edge dress-up shows its Auto/Fillet/Chamfer row.
+                let show_distance_type = !dressup_chrome_armed;
                 element
-                    .child(
-                        div()
-                            .id("arrow-total-chip")
-                            .absolute()
-                            .left(px(position.x / scale))
-                            .top(px(position.y / scale - 25.0))
-                            .px(theme.space(1.5))
-                            .py(px(2.0))
-                            .rounded(px(theme.radius_control))
-                            .border_1()
-                            .border_color(theme.border)
-                            .bg(theme.panel)
-                            .text_color(theme.text_muted)
-                            .text_size(px(theme.text_sm))
-                            .cursor_pointer()
-                            .child(crate::i18n::t("Total"))
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|this, _, _, cx| {
-                                    cx.stop_propagation();
-                                    this.arrow_options_expanded = !this.arrow_options_expanded;
-                                    cx.notify();
-                                }),
-                            ),
-                    )
+                    .when(show_distance_type, |element| {
+                        element.child(
+                            div()
+                                .id("arrow-total-chip")
+                                .absolute()
+                                .left(px(position.x / scale))
+                                .top(px(position.y / scale - 25.0))
+                                .px(theme.space(1.5))
+                                .py(px(2.0))
+                                .rounded(px(theme.radius_control))
+                                .border_1()
+                                .border_color(theme.border)
+                                .bg(theme.panel)
+                                .text_color(theme.text_muted)
+                                .text_size(px(theme.text_sm))
+                                .cursor_pointer()
+                                .child(crate::i18n::t("Total"))
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(|this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.arrow_options_expanded = !this.arrow_options_expanded;
+                                        cx.notify();
+                                    }),
+                                ),
+                        )
+                    })
                     .child(
                         div()
                             .id("arrow-value-chip")
@@ -10161,10 +10615,11 @@ mod tests {
     use gpui::{KeyDownEvent, Keystroke};
 
     use super::{
-        MarqueeMode, Measurement, NumericDragTransition, PickCandidate, ReferenceGeometry,
-        ReferenceKind, SceneMesh, ScreenRect, Viewport, ambiguous_candidates, exploded_offset,
-        marquee_mode, nearest_face_per_body, point_is_clipped, resolve_selection_candidate,
-        scene_upload_list, screen_bounds_match, segment_intersects_rect, selection_count_label,
+        ArmedTool, DressUpMode, MarqueeMode, Measurement, NumericDragTransition, PickCandidate,
+        ReferenceGeometry, ReferenceKind, SceneMesh, ScreenRect, Viewport, ambiguous_candidates,
+        armed_tool_copy, exploded_offset, marquee_mode, nearest_face_per_body, point_is_clipped,
+        resolve_dressup_kind, resolve_selection_candidate, scene_upload_list, screen_bounds_match,
+        segment_intersects_rect, selection_count_label, snap_distance_to_plane,
         solve_arrow_chip_anchor, world_reference,
     };
     use crate::{
@@ -10433,6 +10888,7 @@ mod tests {
         let face = SelItem::Face(BodyId(1), 0);
         let edge = SelItem::Edge(BodyId(1), 0);
         let body = SelItem::Body(BodyId(1));
+        let vertex = SelItem::Vertex(BodyId(1), 0);
         assert_eq!(
             selection_count_label(crate::i18n::Lang::En, &[face]),
             "1 Face"
@@ -10450,6 +10906,10 @@ mod tests {
             "2 Items"
         );
         assert_eq!(
+            selection_count_label(crate::i18n::Lang::En, &[vertex]),
+            "1 Vertex"
+        );
+        assert_eq!(
             selection_count_label(crate::i18n::Lang::ZhCn, &[face]),
             "1 面"
         );
@@ -10464,6 +10924,53 @@ mod tests {
         assert_eq!(
             selection_count_label(crate::i18n::Lang::ZhCn, &[face, edge]),
             "2 项"
+        );
+        assert_eq!(
+            selection_count_label(crate::i18n::Lang::ZhCn, &[vertex]),
+            "1 顶点"
+        );
+    }
+
+    #[test]
+    fn automatic_dressup_resolves_drag_sign() {
+        assert!(resolve_dressup_kind(DressUpMode::Auto, 2.0));
+        assert!(!resolve_dressup_kind(DressUpMode::Auto, -2.0));
+        assert!(resolve_dressup_kind(DressUpMode::Fillet, -2.0));
+        assert!(!resolve_dressup_kind(DressUpMode::Chamfer, 2.0));
+    }
+
+    #[test]
+    fn banner_copy_exists_in_both_languages_for_every_armed_tool() {
+        for tool in [
+            ArmedTool::Extrude,
+            ArmedTool::OffsetFace,
+            ArmedTool::DressUp,
+            ArmedTool::Shell,
+            ArmedTool::Thicken,
+            ArmedTool::Gizmo,
+        ] {
+            for language in [crate::i18n::Lang::En, crate::i18n::Lang::ZhCn] {
+                let (name, hint) = armed_tool_copy(tool, language);
+                assert!(!name.is_empty(), "missing {language:?} name for {tool:?}");
+                assert!(!hint.is_empty(), "missing {language:?} hint for {tool:?}");
+                if language == crate::i18n::Lang::ZhCn {
+                    assert_ne!(name, armed_tool_copy(tool, crate::i18n::Lang::En).0);
+                    assert_ne!(hint, armed_tool_copy(tool, crate::i18n::Lang::En).1);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn up_to_face_snap_requires_parallel_plane_and_is_exact() {
+        let origin = DVec3::new(0.0, 0.0, 2.0);
+        assert_eq!(
+            snap_distance_to_plane(origin, DVec3::Z, DVec3::new(0.0, 0.0, 9.0), DVec3::Z),
+            Some(7.0)
+        );
+        assert_eq!(
+            snap_distance_to_plane(origin, DVec3::Z, DVec3::ZERO, DVec3::X),
+            None
         );
     }
 }

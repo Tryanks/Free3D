@@ -464,11 +464,13 @@ pub enum ToolId {
     Properties,
     InterferenceCheck,
     GeometryCheck,
+    /// Point/edge/face measurement mode.
+    Measure,
 }
 
 impl ToolId {
     /// Every modeling tool in tool-strip order.
-    pub const ALL: [Self; 68] = [
+    pub const ALL: [Self; 69] = [
         Self::Line,
         Self::Rectangle,
         Self::CenterRectangle,
@@ -537,6 +539,7 @@ impl ToolId {
         Self::Properties,
         Self::InterferenceCheck,
         Self::GeometryCheck,
+        Self::Measure,
     ];
 
     /// Human-readable tool name.
@@ -610,6 +613,7 @@ impl ToolId {
             ToolId::Properties => crate::i18n::t("Properties"),
             ToolId::InterferenceCheck => crate::i18n::t("Interference Check"),
             ToolId::GeometryCheck => crate::i18n::t("Check Geometry"),
+            ToolId::Measure => crate::i18n::t("Measure"),
         }
     }
 
@@ -703,6 +707,7 @@ impl ToolId {
             ToolId::Properties => "measure",
             ToolId::InterferenceCheck => "intersect",
             ToolId::GeometryCheck => "measure",
+            ToolId::Measure => "measure",
         }
     }
 }

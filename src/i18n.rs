@@ -110,7 +110,6 @@ fn translate(language: Lang, en: &'static str) -> &'static str {
 
 /// Translates a source key for an explicit language without changing the
 /// process-wide preference. This is also useful for deterministic formatters.
-#[cfg(test)]
 pub fn translate_for(language: Lang, en: &'static str) -> &'static str {
     translate(language, en)
 }
@@ -163,8 +162,30 @@ static ZH_TRANSLATIONS: &[(&str, &str)] = &[
     ("Faces", "面"),
     ("Edges", "边"),
     ("Bodies", "体"),
+    ("Vertex", "顶点"),
+    ("Vertices", "顶点"),
     ("Deselect All", "全部取消选择"),
     ("Total", "总计"),
+    ("Fillet / Chamfer", "圆角/倒角"),
+    (
+        "Drag away for a fillet or into the body for a chamfer",
+        "向外拖动创建圆角，向实体内拖动创建倒角",
+    ),
+    (
+        "Drag the arrow to offset the face in or out",
+        "拖动箭头向内或向外偏移面",
+    ),
+    ("Drag the arrow to extrude the face", "拖动箭头拉伸面"),
+    (
+        "Drag the arrow to set the shell thickness",
+        "拖动箭头设置抽壳厚度",
+    ),
+    ("Drag the arrow to thicken the surface", "拖动箭头加厚曲面"),
+    (
+        "Drag the gizmo to move or rotate the selection",
+        "拖动操纵器移动或旋转所选对象",
+    ),
+    ("Snapped to face", "已吸附到面"),
     ("Variables", "变量"),
     ("Materials", "材质"),
     (

@@ -1144,6 +1144,13 @@ impl Free3dApp {
                 self.viewport.update(cx, |viewport, _| {
                     viewport.set_joint_drive_enabled(tool == ToolId::Drive)
                 });
+                if tool == ToolId::Measure {
+                    let index = Self::mode_index(ModeChip::Measure);
+                    self.active_modes[index] = true;
+                    self.viewport.update(cx, |viewport, cx| {
+                        viewport.set_mode(ModeChip::Measure, true, window, cx)
+                    });
+                }
                 if tool == ToolId::Ground {
                     self.document.update(cx, |document, cx| {
                         let bodies: Vec<_> = document
@@ -1637,6 +1644,7 @@ impl Free3dApp {
                     issues: body.shape.check().map_err(|error| error.to_string()),
                 }
             }
+            ToolId::Measure => return,
             _ => return,
         });
         self.viewport.update(cx, |viewport, cx| {
@@ -2647,6 +2655,7 @@ impl Free3dApp {
             units: self.units,
             language: self.language,
             autosave_interval_secs: self.autosave_interval_secs,
+            tool_banner_collapsed: crate::settings::load().tool_banner_collapsed,
         }) {
             eprintln!("failed to save settings: {error}");
         }

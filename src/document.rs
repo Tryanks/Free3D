@@ -17,7 +17,7 @@ use crate::constraint::{Constraint, solve_items};
 use crate::drawing::Drawing;
 use crate::history::{
     HistoryOp, HistoryStep, HoleCut, HoleKind, PathRef, PrimitiveKind, ReplayError, edge_ref,
-    face_ref,
+    face_ref, resolve_face,
 };
 use crate::sketch::{Sketch, SketchEntity, SketchId, SketchItem, SketchPlane};
 use crate::tools::extrude::{ExtrudeDrag, ExtrudeMode, ProfileExtrudeDrag};
@@ -417,6 +417,10 @@ pub enum SelItem {
     Face(BodyId, u32),
     /// An edge index in the body's stable OCCT edge iteration order.
     Edge(BodyId, u32),
+    /// A deduplicated BRep edge endpoint in deterministic mesh iteration order.
+    ///
+    /// Vertices are transient selection references and are never written to history.
+    Vertex(BodyId, u32),
     /// A closed profile in a document sketch.
     Profile(SketchId, usize),
     /// A creation-ordered line or circle in a sketch.
@@ -433,7 +437,9 @@ impl SelItem {
     /// Returns the body owning this selection item.
     pub fn body_id(self) -> Option<BodyId> {
         match self {
-            Self::Body(id) | Self::Face(id, _) | Self::Edge(id, _) => Some(id),
+            Self::Body(id) | Self::Face(id, _) | Self::Edge(id, _) | Self::Vertex(id, _) => {
+                Some(id)
+            }
             Self::Profile(_, _)
             | Self::SketchEntity(_, _)
             | Self::Plane(_)
@@ -3464,6 +3470,77 @@ impl Document {
         committed
     }
 
+    /// Applies several face offsets as one snapshot and one replayable history step.
+    pub fn apply_offset_faces(&mut self, faces: &[(BodyId, u32)], distance: f64) -> bool {
+        if faces.is_empty() || !distance.is_finite() || distance.abs() < 1.0e-6 {
+            return false;
+        }
+        let references = faces
+            .iter()
+            .filter_map(|(body, face)| {
+                self.bodies
+                    .iter()
+                    .find(|candidate| candidate.id == *body)
+                    .map(|candidate| (*body, face_ref(&candidate.shape, *face)))
+            })
+            .collect::<Vec<_>>();
+        if references.len() != faces.len() {
+            return false;
+        }
+        let initial = self.snapshot();
+        let redo = self.redo.clone();
+        let undo_len = self.undo.len();
+        let history_len = self.history.len();
+        for (body_id, reference) in &references {
+            let Some(body) = self.bodies.iter().find(|body| body.id == *body_id) else {
+                self.restore(initial);
+                self.undo.truncate(undo_len);
+                self.redo = redo;
+                return false;
+            };
+            let Ok(face_index) = resolve_face(&body.shape, reference) else {
+                self.restore(initial);
+                self.undo.truncate(undo_len);
+                self.redo = redo;
+                return false;
+            };
+            let Some((origin, normal)) = crate::tools::extrude::face_frame(&body.shape, face_index)
+            else {
+                self.restore(initial);
+                self.undo.truncate(undo_len);
+                self.redo = redo;
+                return false;
+            };
+            let drag = ExtrudeDrag {
+                body: *body_id,
+                face_index,
+                origin,
+                normal,
+                distance,
+                opposite_distance: 0.0,
+                side_mode: crate::tools::extrude::ExtrudeSideMode::OneSided,
+                mode: ExtrudeMode::Auto,
+            };
+            if !self.apply_offset_face(&drag) {
+                self.restore(initial);
+                self.undo.truncate(undo_len);
+                self.redo = redo;
+                return false;
+            }
+        }
+        self.undo.truncate(undo_len);
+        if self.undo.len() == MAX_SNAPSHOTS {
+            self.undo.remove(0);
+        }
+        self.undo.push(initial);
+        self.history.truncate(history_len);
+        self.record(HistoryOp::OffsetFaces {
+            faces: references,
+            distance: distance.into(),
+        });
+        true
+    }
+
     /// Replaces a planar face with a parallel target plane.
     ///
     /// The selected face's outward normal defines the kept-material side. A target
@@ -4022,7 +4099,9 @@ impl Document {
         self.prepare_non_sketch_op();
         self.push_undo();
         self.bodies[index].shape = Arc::new(result);
-        self.selection.items = vec![SelItem::Body(body_id)];
+        // Shapr3D leaves nothing selected once a fillet/chamfer commits; a
+        // body selection here would pop the move gizmo mid-flow.
+        self.selection.items.clear();
         self.scene_epoch = self.scene_epoch.wrapping_add(1);
         self.record(if fillet {
             HistoryOp::Fillet {
@@ -4863,6 +4942,89 @@ mod tests {
             (bounds.min() + bounds.max()) * 0.5
         };
         assert!((restored - before).length() < 1.0e-6);
+    }
+
+    #[test]
+    fn multi_body_transform_is_one_undo_step() {
+        let mut document = Document::new();
+        let first = document.add_body("A", Shape::cube(2.0));
+        let second = document.add_body(
+            "B",
+            Shape::cube(2.0)
+                .unwrap()
+                .translated(DVec3::new(5.0, 0.0, 0.0)),
+        );
+        let before = document
+            .bodies
+            .iter()
+            .map(|body| body.shape.aabb().unwrap())
+            .collect::<Vec<_>>();
+        let undo_before = document.undo.len();
+        assert_eq!(
+            document.apply_transform(
+                &[first, second],
+                TransformOp::Translate(DVec3::new(0.0, 3.0, 0.0)),
+            ),
+            vec![first, second]
+        );
+        assert_eq!(document.undo.len(), undo_before + 1);
+        assert!(document.undo());
+        for (body, expected) in document.bodies.iter().zip(before) {
+            assert_eq!(body.shape.aabb().unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn group_offset_faces_is_one_undo_step_restoring_every_body() {
+        let mut document = Document::new();
+        let first = document.add_body("A", Shape::cube(10.0));
+        let second = document.add_body(
+            "B",
+            Shape::cube(10.0)
+                .unwrap()
+                .translated(DVec3::new(20.0, 0.0, 0.0)),
+        );
+        let top_face = |shape: &Shape| {
+            (0..shape.face_count().unwrap())
+                .filter_map(|index| {
+                    crate::tools::extrude::face_frame(shape, index as u32)
+                        .map(|(origin, _)| (index as u32, origin.z))
+                })
+                .max_by(|left, right| left.1.total_cmp(&right.1))
+                .unwrap()
+                .0
+        };
+        let faces = document
+            .bodies
+            .iter()
+            .map(|body| (body.id, top_face(&body.shape)))
+            .collect::<Vec<_>>();
+        assert_eq!(faces[0].0, first);
+        assert_eq!(faces[1].0, second);
+        let before = document
+            .bodies
+            .iter()
+            .map(|body| body.shape.aabb().unwrap())
+            .collect::<Vec<_>>();
+        let undo_before = document.undo.len();
+        let history_before = document.history.len();
+        assert!(document.apply_offset_faces(&faces, 2.0));
+        assert_eq!(document.undo.len(), undo_before + 1);
+        assert_eq!(document.history.len(), history_before + 1);
+        assert!(matches!(
+            document.history.last().map(|step| &step.op),
+            Some(HistoryOp::OffsetFaces { faces, .. }) if faces.len() == 2
+        ));
+        assert!(
+            document
+                .bodies
+                .iter()
+                .all(|body| (body.shape.aabb().unwrap().1.z - 12.0).abs() < 1.0e-5)
+        );
+        assert!(document.undo());
+        for (body, expected) in document.bodies.iter().zip(before) {
+            assert_eq!(body.shape.aabb().unwrap(), expected);
+        }
     }
 
     #[test]

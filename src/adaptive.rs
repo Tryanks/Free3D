@@ -55,6 +55,7 @@ fn is_eligible(tool: ToolId) -> bool {
             | ToolId::Ground
             | ToolId::Joint
             | ToolId::Drive
+            | ToolId::Measure
     )
 }
 
@@ -75,6 +76,7 @@ pub fn adaptive_tools(selection: &Selection, document: &Document) -> Vec<ToolId>
     let mut face_bodies: Vec<(crate::document::BodyId, u32)> = Vec::new();
     let mut edge_bodies: Vec<(crate::document::BodyId, u32)> = Vec::new();
     let mut body_ids: Vec<crate::document::BodyId> = Vec::new();
+    let mut vertices = Vec::new();
 
     for item in &selection.items {
         match *item {
@@ -87,6 +89,7 @@ pub fn adaptive_tools(selection: &Selection, document: &Document) -> Vec<ToolId>
                     body_ids.push(id);
                 }
             }
+            SelItem::Vertex(id, index) => vertices.push((id, index)),
             SelItem::Plane(_) | SelItem::Axis(_) | SelItem::Point(_) => {}
         }
     }
@@ -94,6 +97,17 @@ pub fn adaptive_tools(selection: &Selection, document: &Document) -> Vec<ToolId>
     // Each entry is `(kind priority, ordered candidate tools)`; lower priority
     // sorts first and drives the final ordering.
     let mut sets: Vec<(u8, Vec<ToolId>)> = Vec::new();
+
+    if !vertices.is_empty() && !body_ids.is_empty() {
+        return vec![ToolId::Align, ToolId::Measure];
+    }
+    if !vertices.is_empty() {
+        sets.push((0, vec![ToolId::Measure]));
+    }
+
+    if face_bodies.len() == 2 && face_bodies[0].0 != face_bodies[1].0 {
+        return vec![ToolId::Align, ToolId::ReplaceFace];
+    }
 
     if !profiles.is_empty() {
         let mut tools = if profiles.len() >= 2 {
@@ -162,7 +176,7 @@ pub fn adaptive_tools(selection: &Selection, document: &Document) -> Vec<ToolId>
     if !edge_bodies.is_empty() && edge_bodies.iter().all(|(id, _)| *id == edge_bodies[0].0) {
         let mut tools = vec![ToolId::Fillet, ToolId::Chamfer];
         if closed_edge_loop_applies(&edge_bodies, document) {
-            tools.insert(0, ToolId::Patch);
+            tools.push(ToolId::Patch);
         }
         sets.push((2, tools));
     }
@@ -230,14 +244,15 @@ pub fn adaptive_tools(selection: &Selection, document: &Document) -> Vec<ToolId>
                 } else {
                     vec![
                         ToolId::Union,
-                        ToolId::InterferenceCheck,
-                        ToolId::Properties,
                         ToolId::Subtract,
                         ToolId::Intersect,
+                        ToolId::Align,
+                        ToolId::Joint,
+                        ToolId::InterferenceCheck,
+                        ToolId::Properties,
                         ToolId::Mirror,
                         ToolId::Pattern,
                         ToolId::Scale,
-                        ToolId::Align,
                     ]
                 },
             ));
@@ -443,6 +458,40 @@ mod tests {
         assert_eq!(tools.first(), Some(&ToolId::Union));
         assert!(tools.contains(&ToolId::Subtract));
         assert!(tools.contains(&ToolId::Intersect));
+        assert!(tools.contains(&ToolId::Align));
+        assert!(tools.contains(&ToolId::Joint));
+    }
+
+    #[test]
+    fn faces_on_different_bodies_rank_align_and_replace_face() {
+        let mut document = Document::new();
+        let a = document.add_body("A", Shape::cube(10.0));
+        let b = document.add_body("B", Shape::cube(10.0));
+        let tools = adaptive_tools(
+            &selection(vec![
+                SelItem::Face(a, planar_top_face(&document, a)),
+                SelItem::Face(b, planar_top_face(&document, b)),
+            ]),
+            &document,
+        );
+        assert_eq!(tools, vec![ToolId::Align, ToolId::ReplaceFace]);
+    }
+
+    #[test]
+    fn vertex_ranks_measure_and_vertex_plus_body_ranks_align() {
+        let mut document = Document::new();
+        let body = document.add_body("Box", Shape::cube(10.0));
+        assert_eq!(
+            adaptive_tools(&selection(vec![SelItem::Vertex(body, 0)]), &document),
+            vec![ToolId::Measure]
+        );
+        assert_eq!(
+            adaptive_tools(
+                &selection(vec![SelItem::Vertex(body, 0), SelItem::Body(body)]),
+                &document,
+            ),
+            vec![ToolId::Align, ToolId::Measure]
+        );
     }
 
     #[test]

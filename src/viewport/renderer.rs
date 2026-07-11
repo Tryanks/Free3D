@@ -2019,7 +2019,8 @@ impl Renderer {
             | SelItem::SketchEntity(_, _)
             | SelItem::Plane(_)
             | SelItem::Axis(_)
-            | SelItem::Point(_) => {}
+            | SelItem::Point(_)
+            | SelItem::Vertex(_, _) => {}
         }
     }
 

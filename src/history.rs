@@ -536,6 +536,11 @@ pub enum HistoryOp {
         face_index: FaceRef,
         distance: Num,
     },
+    /// Offset several selected faces as one transaction.
+    OffsetFaces {
+        faces: Vec<(BodyId, FaceRef)>,
+        distance: Num,
+    },
     /// Extend or trim a planar face to a parallel target plane.
     ReplaceFace {
         body: BodyId,
@@ -716,6 +721,7 @@ impl HistoryOp {
             Self::Extrude { .. } => "Extrude",
             Self::SurfaceExtrude { .. } => "Surface Extrude",
             Self::OffsetFace { .. } => "Offset Face",
+            Self::OffsetFaces { .. } => "Offset Face",
             Self::ReplaceFace { .. } => "Replace Face",
             Self::Boolean { op, .. } => match op {
                 BooleanOp::Union => "Union",
@@ -775,7 +781,7 @@ impl HistoryOp {
             Self::AddConstructionPoint { .. } => "point",
             Self::AddReferenceImage { .. } => "image",
             Self::Extrude { .. } | Self::SurfaceExtrude { .. } => "extrude",
-            Self::OffsetFace { .. } => "offset",
+            Self::OffsetFace { .. } | Self::OffsetFaces { .. } => "offset",
             Self::ReplaceFace { .. } => "offset",
             Self::Boolean { op, .. } => match op {
                 BooleanOp::Union => "union",
@@ -893,7 +899,9 @@ impl HistoryOp {
                 || format!("±{:.1}", distance.abs() * 0.5),
                 |expression| format!("±{expression}"),
             ),
-            Self::Extrude { distance, .. } | Self::OffsetFace { distance, .. } => {
+            Self::Extrude { distance, .. }
+            | Self::OffsetFace { distance, .. }
+            | Self::OffsetFaces { distance, .. } => {
                 format!("{distance:.1}")
             }
             Self::SurfaceExtrude {
@@ -1011,7 +1019,8 @@ impl HistoryOp {
         match self {
             Self::Extrude { distance, .. }
             | Self::SurfaceExtrude { distance, .. }
-            | Self::OffsetFace { distance, .. } => Some(distance.value),
+            | Self::OffsetFace { distance, .. }
+            | Self::OffsetFaces { distance, .. } => Some(distance.value),
             Self::Fillet { radius, .. } | Self::Chamfer { radius, .. } => Some(radius.value),
             Self::Shell { thickness, .. } => Some(thickness.value),
             Self::Hole { diameter, .. } => Some(diameter.value),
@@ -1032,7 +1041,8 @@ impl HistoryOp {
         match self {
             Self::Extrude { distance, .. }
             | Self::SurfaceExtrude { distance, .. }
-            | Self::OffsetFace { distance, .. } => Some(distance.editor_text()),
+            | Self::OffsetFace { distance, .. }
+            | Self::OffsetFaces { distance, .. } => Some(distance.editor_text()),
             Self::Fillet { radius, .. } | Self::Chamfer { radius, .. } => {
                 Some(radius.editor_text())
             }
@@ -1057,7 +1067,8 @@ impl HistoryOp {
         match self {
             Self::Extrude { distance, .. }
             | Self::SurfaceExtrude { distance, .. }
-            | Self::OffsetFace { distance, .. } => *distance = Num::from_input(value, expression),
+            | Self::OffsetFace { distance, .. }
+            | Self::OffsetFaces { distance, .. } => *distance = Num::from_input(value, expression),
             Self::Fillet { radius, .. } | Self::Chamfer { radius, .. } => {
                 *radius = Num::from_input(value, expression)
             }
@@ -1104,7 +1115,9 @@ impl HistoryOp {
                 visit(distance);
                 visit(opposite_distance);
             }
-            Self::OffsetFace { distance, .. } => visit(distance),
+            Self::OffsetFace { distance, .. } | Self::OffsetFaces { distance, .. } => {
+                visit(distance)
+            }
             Self::Fillet {
                 radius, end_radius, ..
             } => {
@@ -1492,6 +1505,19 @@ pub fn replay(steps: &[HistoryStep]) -> Result<Document, ReplayError> {
                     ExtrudeMode::Auto,
                     true,
                 )
+            }
+            HistoryOp::OffsetFaces { faces, distance } => {
+                let mut resolved = Vec::with_capacity(faces.len());
+                for (body, reference) in faces {
+                    let index = resolve_face(
+                        body_shape(&document, *body)
+                            .map_err(|message| failed(step_index, message))?,
+                        reference,
+                    )
+                    .map_err(|message| failed(step_index, message))?;
+                    resolved.push((*body, index));
+                }
+                document.apply_offset_faces(&resolved, distance.value)
             }
             HistoryOp::ReplaceFace {
                 body,

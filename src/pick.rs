@@ -88,6 +88,73 @@ pub struct EdgeHit {
     pub world: Vec3,
 }
 
+/// One deduplicated edge-endpoint hit in screen space.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VertexHit {
+    /// Owning body.
+    pub body: BodyId,
+    /// Deterministic index in the body's deduplicated endpoint list.
+    pub vertex: u32,
+    /// Cursor-to-vertex distance in device pixels.
+    pub distance: f32,
+    /// Depth along the cursor ray.
+    pub t: f32,
+    /// Projected endpoint.
+    pub screen: Vec2,
+    /// World-space endpoint.
+    pub world: Vec3,
+}
+
+/// Deduplicates edge-polyline endpoints in first-seen order.
+pub fn edge_vertices(mesh: &BodyMesh) -> Vec<Vec3> {
+    let mut vertices: Vec<Vec3> = Vec::new();
+    for point in mesh
+        .edges
+        .iter()
+        .flat_map(|edge| edge.points.first().into_iter().chain(edge.points.last()))
+    {
+        let point = Vec3::from(*point);
+        if !vertices
+            .iter()
+            .any(|current| current.distance_squared(point) <= 1.0e-10)
+        {
+            vertices.push(point);
+        }
+    }
+    vertices
+}
+
+/// Picks the nearest deduplicated edge endpoint within `threshold` pixels.
+pub fn pick_vertex(
+    bodies: &[PickBody<'_>],
+    camera: &OrbitCamera,
+    cursor: Vec2,
+    threshold: f32,
+) -> Option<VertexHit> {
+    let (ray_origin, ray) = camera.unproject_ray(cursor);
+    bodies
+        .iter()
+        .flat_map(|body| {
+            edge_vertices(body.mesh)
+                .into_iter()
+                .enumerate()
+                .map(move |(vertex, local)| {
+                    let world = body.pose.transform_point3(local);
+                    let screen = camera.project(world);
+                    VertexHit {
+                        body: body.id,
+                        vertex: vertex as u32,
+                        distance: cursor.distance(screen),
+                        t: (world - ray_origin).dot(ray),
+                        screen,
+                        world,
+                    }
+                })
+        })
+        .filter(|hit| hit.distance <= threshold && hit.t >= 0.0)
+        .min_by(|left, right| left.distance.total_cmp(&right.distance))
+}
+
 /// Rejects an edge candidate that is hidden behind a face.
 ///
 /// Depths are compared along a single ray cast through the edge's closest
@@ -363,6 +430,40 @@ mod tests {
             .find(|edge| edge.points.len() > 4)
             .expect("cylinder must tessellate a curved rim");
         assert!(fit_straight_edge(&rim.points).is_none());
+    }
+
+    #[test]
+    fn vertex_endpoints_deduplicate_and_take_screen_priority() {
+        let camera = OrbitCamera::new(Vec3::ZERO, 10.0, Vec2::new(800.0, 600.0));
+        let mut mesh = BodyMesh::default();
+        mesh.edges.push(crate::kernel::EdgePolyline {
+            points: vec![[-1.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            range: 0..2,
+        });
+        mesh.edges.push(crate::kernel::EdgePolyline {
+            points: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+            range: 2..4,
+        });
+        assert_eq!(edge_vertices(&mesh).len(), 3);
+        let shape = Shape::cube(2.0)
+            .unwrap()
+            .translated(DVec3::new(-1.0, -1.0, -1.0))
+            .unwrap();
+        let bodies = [PickBody {
+            id: BodyId(1),
+            mesh: &mesh,
+            shape: &shape,
+            pose: Mat4::IDENTITY,
+        }];
+        let cursor = camera.project(Vec3::ZERO);
+        let vertex = pick_vertex(&bodies, &camera, cursor, EDGE_PICK_THRESHOLD_PX)
+            .expect("shared endpoint vertex");
+        let edge = pick_edge(&bodies, &camera, cursor, EDGE_PICK_THRESHOLD_PX)
+            .expect("edge under shared endpoint");
+        let (origin, ray) = camera.unproject_ray(cursor);
+        assert!(pick_face(&bodies, origin, ray).is_some());
+        assert_eq!(vertex.distance, 0.0);
+        assert!(vertex.distance <= edge.distance);
     }
     #[test]
     fn sphere_face_ray_does_not_throw() {

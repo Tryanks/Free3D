@@ -20,6 +20,8 @@ pub struct Settings {
     pub language: LangChoice,
     /// Autosave cadence in seconds; zero disables autosave.
     pub autosave_interval_secs: u64,
+    /// Whether the viewport tool banner is collapsed to its title.
+    pub tool_banner_collapsed: bool,
 }
 
 impl Default for Settings {
@@ -30,6 +32,7 @@ impl Default for Settings {
             units: Units::default(),
             language: LangChoice::Auto,
             autosave_interval_secs: 180,
+            tool_banner_collapsed: false,
         }
     }
 }
@@ -81,6 +84,7 @@ mod tests {
             units: Units::Inch,
             language: LangChoice::ZhCn,
             autosave_interval_secs: 90,
+            tool_banner_collapsed: true,
         };
         save(expected).unwrap();
         assert_eq!(load(), expected);
