@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.runner }}
+    # Free3D is developed primarily on macOS; other targets are built on a
+    # best-effort basis and must not block a release while they stabilize.
+    continue-on-error: ${{ matrix.experimental }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            artifact: free3d-macos-aarch64
+            experimental: false
+          - runner: macos-15-intel
+            artifact: free3d-macos-x86_64
+            experimental: true
+          - runner: ubuntu-24.04
+            artifact: free3d-linux-x86_64
+            experimental: true
+          - runner: ubuntu-24.04-arm
+            artifact: free3d-linux-aarch64
+            experimental: true
+          - runner: windows-2025
+            artifact: free3d-windows-x86_64
+            experimental: true
+          - runner: windows-11-arm
+            artifact: free3d-windows-aarch64
+            experimental: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev libfontconfig-dev libwayland-dev \
+            libx11-xcb-dev libxkbcommon-x11-dev libxkbcommon-dev \
+            libssl-dev libzstd-dev libvulkan-dev cmake ninja-build
+
+      - name: Cache cargo and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.artifact }}
+
+      - name: Build (release)
+        run: cargo build --release --locked
+
+      - name: Package (macOS .app)
+        if: runner.os == 'macOS'
+        run: |
+          APP="Free3D.app"
+          mkdir -p "$APP/Contents/MacOS"
+          cp target/release/free3d "$APP/Contents/MacOS/Free3D"
+          cat > "$APP/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>Free3D</string>
+            <key>CFBundleDisplayName</key><string>Free3D</string>
+            <key>CFBundleIdentifier</key><string>com.tryanks.free3d</string>
+            <key>CFBundleExecutable</key><string>Free3D</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>0.1.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          ditto -c -k --keepParent "$APP" "${{ matrix.artifact }}.zip"
+
+      - name: Package (Linux tar.gz)
+        if: runner.os == 'Linux'
+        run: |
+          install -Dm755 target/release/free3d dist/free3d
+          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" free3d
+
+      - name: Package (Windows zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path target/release/free3d.exe -DestinationPath "${{ matrix.artifact }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.zip
+            ${{ matrix.artifact }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: false
