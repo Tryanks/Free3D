@@ -21,17 +21,9 @@ Shapr3D showed how approachable direct modeling can be. FreeCAD showed how much 
 
 ## Getting started
 
-Free3D targets all desktop platforms (macOS, Windows, Linux). It is currently developed and tested primarily on macOS — if you hit a problem elsewhere, please [open an issue](../../issues).
+**[Download the latest release](../../releases/latest)** for macOS, Windows, or Linux — each build is a single self-contained file with everything statically linked. No installer, no runtimes, no additional dependencies: unpack and run.
 
-**Prerequisites:** [Rust](https://rustup.rs) 1.95+, CMake 3.24+, and a C++ toolchain (Xcode Command Line Tools on macOS, MSVC on Windows, gcc/clang on Linux).
-
-```sh
-git clone https://github.com/Tryanks/Free3D.git
-cd Free3D
-cargo run --release
-```
-
-The first build compiles the OpenCASCADE kernel from source and takes a while (about 15 minutes); after that, builds are fast.
+Free3D targets all desktop platforms and is currently developed and tested primarily on macOS — if you hit a problem elsewhere, please [open an issue](../../issues). The macOS app is not yet code-signed: the first time, right-click it and choose Open.
 
 **First steps:**
 
@@ -46,6 +38,18 @@ The first build compiles the OpenCASCADE kernel from source and takes a while (a
 | Orbit | Two-finger drag | Right-button drag |
 | Pan | Shift + two-finger drag | Middle-button drag |
 | Zoom | Pinch | Scroll wheel |
+
+## Building from source
+
+You only need [Rust](https://rustup.rs) and [CMake](https://cmake.org/download/):
+
+```sh
+git clone https://github.com/Tryanks/Free3D.git
+cd Free3D
+cargo run --release
+```
+
+The first build compiles the OpenCASCADE kernel from source and takes a while (about 15 minutes); after that, builds are fast. See the [contributing guide](CONTRIBUTING.md) for development tips.
 
 ## Getting help
 

@@ -61,6 +61,20 @@ jobs:
       - name: Build (release)
         run: cargo build --release --locked
 
+      # Guard the single-file promise: fail if the binary picks up dynamic
+      # libraries beyond what every desktop system ships out of the box.
+      - name: Linkage report
+        if: runner.os != 'Windows'
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            otool -L target/release/free3d
+            if otool -L target/release/free3d | tail -n +2 | grep -vE '^\s+(/System/|/usr/lib/)'; then
+              echo "::error::non-system dynamic libraries detected"; exit 1
+            fi
+          else
+            ldd target/release/free3d
+          fi
+
       - name: Package (macOS .app)
         if: runner.os == 'macOS'
         run: |

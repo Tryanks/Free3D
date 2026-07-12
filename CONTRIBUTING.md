@@ -19,7 +19,7 @@ Open an issue describing **what you're trying to accomplish**, not only the feat
 
 ## Building from source
 
-Prerequisites: [Rust](https://rustup.rs) 1.95+, CMake 3.24+, and a C++ toolchain (Xcode Command Line Tools / MSVC / gcc or clang).
+Prerequisites: [Rust](https://rustup.rs) 1.95+ and CMake 3.24+. On Linux, gpui additionally needs common desktop development headers (see the apt list in `.github/workflows/release.yml`).
 
 ```sh
 git clone https://github.com/Tryanks/Free3D.git

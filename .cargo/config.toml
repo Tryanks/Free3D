@@ -2,3 +2,8 @@
 # OCCT 7.8.1 (vendored by occt-sys) uses cmake_minimum_required < 3.5,
 # which CMake 4.x rejects without this compatibility override.
 CMAKE_POLICY_VERSION_MINIMUM = "3.5"
+
+# Statically link the MSVC C runtime so Windows builds run without the
+# Visual C++ Redistributable — the binary stays a single dependency-free file.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]
