@@ -13,7 +13,7 @@ Select a face and pull it. Drag an edge to round it. Free3D is a desktop CAD app
 - **Full workflow in one app.** Sketching with constraints, solid and surface modeling, assemblies with joints, measurement and interference checks, and 2D drawings with dimensions and a parts list — exported to SVG/PDF.
 - **Works with your other tools.** Import and export STEP and IGES; import STL/OBJ/DXF; export OBJ, glTF, 3MF, and STL for printing and rendering.
 - **A home for your designs.** A design library with thumbnails opens on launch; projects are single `.f3d` files you can back up, sync, or share however you like. Autosave and crash recovery are built in.
-- **Made for the desktop.** GPU-accelerated interface, touchpad-first navigation (two-finger orbit, pinch to zoom), light and dark themes, English and 简体中文.
+- **Made for the desktop.** GPU-accelerated interface, touchpad-first navigation (two-finger orbit, pinch to zoom), light and dark themes, localized interface.
 
 ## Why Free3D
 
