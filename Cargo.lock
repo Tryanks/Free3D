@@ -1442,6 +1442,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "ductile"
+version = "0.2.0"
+dependencies = [
+ "ab_glyph",
+ "base64",
+ "bytemuck",
+ "dirs",
+ "glam",
+ "gpui",
+ "gpui_platform",
+ "image",
+ "occt",
+ "opener",
+ "pollster 0.4.0",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "sys-locale",
+ "tempfile",
+ "trash",
+ "wgpu",
+]
+
+[[package]]
 name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1767,30 +1791,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "free3d"
-version = "0.1.0"
-dependencies = [
- "ab_glyph",
- "base64",
- "bytemuck",
- "dirs",
- "glam",
- "gpui",
- "gpui_platform",
- "image",
- "occt",
- "opener",
- "pollster 0.4.0",
- "serde",
- "serde_json",
- "smallvec",
- "sys-locale",
- "tempfile",
- "trash",
- "wgpu",
 ]
 
 [[package]]

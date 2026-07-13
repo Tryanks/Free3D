@@ -10,7 +10,7 @@ use gpui::{
 };
 
 use crate::{
-    app::{Free3dApp, Space},
+    app::{DuctileApp, Space},
     commands::{AppCommand, StandardView},
     theme::Theme,
     ui::{self, glyph},
@@ -23,7 +23,7 @@ const FOV_TRACK: f32 = 176.0;
 const CLUSTER_WIDTH: f32 = 172.0;
 
 /// Builds the top-right view clusters.
-pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+pub fn render(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     // Keep the controls clear of the 96 px cube at a 24 px viewport inset.
     div()
         .absolute()
@@ -43,7 +43,7 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
         })
 }
 
-fn screenshot_cluster(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn screenshot_cluster(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     ui::surface(theme).p(theme.space(1.0)).child(
         info_row(
@@ -62,7 +62,7 @@ fn screenshot_cluster(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl Into
 }
 
 /// The snap / grid-pitch / views cluster and its optional popover.
-fn upper_cluster(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn upper_cluster(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     div().relative().child(
         ui::surface(theme)
@@ -92,7 +92,7 @@ fn upper_cluster(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEleme
 }
 
 /// The grid-lock indicator: a two-line micro-label showing the grid pitch.
-fn grid_indicator(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn grid_indicator(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let on = app.grid_visible;
     let fg = if on { theme.accent } else { theme.text_muted };
@@ -137,7 +137,7 @@ fn grid_indicator(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElem
 }
 
 /// The display-mode / screenshot / history cluster.
-fn lower_cluster(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn lower_cluster(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     ui::surface(theme)
         .w(px(CLUSTER_WIDTH))
@@ -270,7 +270,7 @@ fn info_row(
 }
 
 /// The floating views / appearance popover.
-fn popover(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn popover(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let fov = app.fov_degrees;
     let fill = (fov / 90.0).clamp(0.0, 1.0);
@@ -335,10 +335,10 @@ fn popover(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
 }
 
 fn analysis_row(
-    app: &Free3dApp,
+    app: &DuctileApp,
     mode: AnalysisMode,
     label: &'static str,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) -> impl IntoElement {
     let theme = &app.theme;
     let on = app.analysis == mode;
@@ -355,7 +355,7 @@ fn analysis_row(
         .on_click(cx.listener(move |this, _, _window, cx| this.toggle_analysis(mode, cx)))
 }
 
-fn saved_views(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn saved_views(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let mut slots = div().flex().flex_row().flex_wrap().gap(theme.space(1.0));
     for index in 0..crate::saved_views::SavedViews::LEN {
@@ -417,7 +417,7 @@ fn section_label(theme: &Theme, text: &'static str) -> impl IntoElement {
         .child(text)
 }
 
-fn standard_views(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn standard_views(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let mut grid = div().flex().flex_row().flex_wrap().gap(theme.space(1.0));
     for view in StandardView::ALL {
@@ -427,9 +427,9 @@ fn standard_views(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElem
 }
 
 fn view_button(
-    app: &Free3dApp,
+    app: &DuctileApp,
     view: StandardView,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) -> impl IntoElement {
     let theme = &app.theme;
     let accent = matches!(view, StandardView::Iso);
@@ -455,7 +455,7 @@ fn view_button(
         }))
 }
 
-fn fov_row(theme: &Theme, fov: f32, fill: f32, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn fov_row(theme: &Theme, fov: f32, fill: f32, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -527,7 +527,7 @@ fn fov_row(theme: &Theme, fov: f32, fill: f32, cx: &mut Context<Free3dApp>) -> i
         )
 }
 
-fn grid_row(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn grid_row(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let on = app.grid_visible;
     div()

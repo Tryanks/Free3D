@@ -52,7 +52,7 @@ fn main() {
         .include(include)
         .include("include")
         .file("cpp/occt_bridge.cpp")
-        .compile("free3d-occt-bridge");
+        .compile("ductile-occt-bridge");
 
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=include/occt_bridge.h");

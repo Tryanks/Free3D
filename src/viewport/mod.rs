@@ -161,7 +161,7 @@ struct SectionDrag {
 }
 
 fn save_dump_frame(rendered: &renderer::RenderedFrame) {
-    let Ok(path) = std::env::var("FREE3D_DUMP_FRAME") else {
+    let Ok(path) = std::env::var("DUCTILE_DUMP_FRAME") else {
         return;
     };
     let mut rgba = rendered.bgra.clone();
@@ -175,7 +175,7 @@ fn save_dump_frame(rendered: &renderer::RenderedFrame) {
         rendered.height,
         image::ColorType::Rgba8,
     ) {
-        eprintln!("FREE3D_DUMP_FRAME failed: {error}");
+        eprintln!("DUCTILE_DUMP_FRAME failed: {error}");
     }
 }
 
@@ -1254,7 +1254,7 @@ impl Viewport {
             viewport.dirty = true;
             cx.notify();
         });
-        let demo_section = std::env::var("FREE3D_DEMO_SCENE").is_ok_and(|scene| scene == "5");
+        let demo_section = std::env::var("DUCTILE_DEMO_SCENE").is_ok_and(|scene| scene == "5");
         let mut viewport = Self {
             renderer: Renderer::new(theme.canvas).expect("failed to initialize the wgpu viewport"),
             document,
@@ -1279,7 +1279,7 @@ impl Viewport {
             show_grid: true,
             display_mode: DisplayMode::Shaded,
             visualize: false,
-            analysis: std::env::var("FREE3D_ANALYSIS")
+            analysis: std::env::var("DUCTILE_ANALYSIS")
                 .is_ok_and(|value| value.eq_ignore_ascii_case("zebra"))
                 .then_some(AnalysisMode::Zebra)
                 .unwrap_or_default(),
@@ -1346,7 +1346,7 @@ impl Viewport {
         if demo_section {
             viewport.ensure_section_offset();
         }
-        if std::env::var_os("FREE3D_DUMP_FRAME").is_some() {
+        if std::env::var_os("DUCTILE_DUMP_FRAME").is_some() {
             let selection = viewport.document.read(cx).selection.items.clone();
             let gizmo = viewport.gizmo_state(cx);
             let extrude_arrow = viewport.tool_arrow_state(cx);

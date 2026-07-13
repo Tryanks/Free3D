@@ -3,13 +3,13 @@
 use gpui::{Context, div, prelude::*, px, rgba};
 
 use crate::{
-    app::Free3dApp,
+    app::DuctileApp,
     commands::SketchConstraintKind,
     ui::{self, tip},
 };
 
 /// Builds the right-side constraint strip while a sketch is active.
-pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> Option<impl IntoElement> {
+pub fn render(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> Option<impl IntoElement> {
     app.document.read(cx).active_sketch?;
     let theme = &app.theme;
     Some(

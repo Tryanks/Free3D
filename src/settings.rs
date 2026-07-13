@@ -38,12 +38,48 @@ impl Default for Settings {
 }
 
 pub(crate) fn settings_dir() -> PathBuf {
-    if let Some(path) = std::env::var_os("FREE3D_SETTINGS_DIR") {
+    if let Some(path) = std::env::var_os("DUCTILE_SETTINGS_DIR") {
         return PathBuf::from(path);
     }
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("Free3D")
+        .join("Ductile")
+}
+
+/// Moves the small persisted application state into the renamed config folder once.
+pub(crate) fn migrate_legacy_config() {
+    if std::env::var_os("DUCTILE_SETTINGS_DIR").is_some() {
+        return;
+    }
+    let Some(config) = dirs::config_dir() else {
+        return;
+    };
+    let old = config.join("Free3D");
+    let new = config.join("Ductile");
+    if new.exists() || !old.is_dir() {
+        return;
+    }
+    let _ = fs::create_dir_all(&new);
+    for name in ["recent.json", "settings.json"] {
+        let _ = fs::copy(old.join(name), new.join(name));
+    }
+    copy_directory_best_effort(&old.join("autosave"), &new.join("autosave"));
+}
+
+fn copy_directory_best_effort(source: &std::path::Path, destination: &std::path::Path) {
+    let Ok(entries) = fs::read_dir(source) else {
+        return;
+    };
+    let _ = fs::create_dir_all(destination);
+    for entry in entries.flatten() {
+        let source_path = entry.path();
+        let destination_path = destination.join(entry.file_name());
+        if source_path.is_dir() {
+            copy_directory_best_effort(&source_path, &destination_path);
+        } else {
+            let _ = fs::copy(source_path, destination_path);
+        }
+    }
 }
 
 fn settings_path() -> PathBuf {
@@ -78,7 +114,7 @@ mod tests {
         let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let directory = tempfile::tempdir().unwrap();
         // SAFETY: this test serializes access to the process environment.
-        unsafe { std::env::set_var("FREE3D_SETTINGS_DIR", directory.path()) };
+        unsafe { std::env::set_var("DUCTILE_SETTINGS_DIR", directory.path()) };
         let expected = Settings {
             dark_theme: true,
             nav_preset: NavPreset::Blender,
@@ -90,7 +126,7 @@ mod tests {
         save(expected).unwrap();
         assert_eq!(load(), expected);
         // SAFETY: protected by the same process-local test mutex.
-        unsafe { std::env::remove_var("FREE3D_SETTINGS_DIR") };
+        unsafe { std::env::remove_var("DUCTILE_SETTINGS_DIR") };
     }
 
     #[test]
@@ -104,7 +140,7 @@ mod tests {
             serde_json::from_str::<Settings>(&json).unwrap().language,
             LangChoice::ZhCn
         );
-        let legacy = r#"{"dark_theme":false,"nav_preset":"Free3dDefault","units":"Millimeter","autosave_interval_secs":180}"#;
+        let legacy = r#"{"dark_theme":false,"nav_preset":"DuctileDefault","units":"Millimeter","autosave_interval_secs":180}"#;
         assert_eq!(
             serde_json::from_str::<Settings>(legacy).unwrap().language,
             LangChoice::Auto

@@ -1,4 +1,4 @@
-//! Raw CXX bridge for the subset of OpenCASCADE used by Free3D.
+//! Raw CXX bridge for the subset of OpenCASCADE used by Ductile.
 
 #[cxx::bridge]
 pub mod ffi {

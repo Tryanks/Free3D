@@ -1,6 +1,6 @@
-# Contributing to Free3D
+# Contributing to Ductile
 
-Thanks for your interest in Free3D! Whether you're reporting a bug, suggesting a feature, improving translations, or writing code, contributions of every kind are welcome — and you don't need to be a CAD expert to help.
+Thanks for your interest in Ductile! Whether you're reporting a bug, suggesting a feature, improving translations, or writing code, contributions of every kind are welcome — and you don't need to be a CAD expert to help.
 
 ## Reporting bugs
 
@@ -9,7 +9,7 @@ Open a [GitHub issue](../../issues) and include:
 - What you did, what you expected, and what happened instead
 - Your OS and version (e.g. macOS 15.5, Windows 11, Ubuntu 24.04)
 - A screenshot or screen recording if the problem is visual
-- The `.f3d` file if the problem is specific to a design (only if you're comfortable sharing it)
+- The `.ductile` file if the problem is specific to a design (only if you're comfortable sharing it)
 
 Crashes: run the app from a terminal and paste the panic message printed there. That single message usually cuts the diagnosis time in half.
 
@@ -22,8 +22,8 @@ Open an issue describing **what you're trying to accomplish**, not only the feat
 Prerequisites: [Rust](https://rustup.rs) 1.95+ and CMake 3.24+. On Linux, gpui additionally needs common desktop development headers (see the apt list in `.github/workflows/release.yml`).
 
 ```sh
-git clone https://github.com/Tryanks/Free3D.git
-cd Free3D
+git clone https://github.com/Tryanks/Ductile.git
+cd Ductile
 cargo run
 ```
 
@@ -35,11 +35,13 @@ Environment variables that make development and testing easier:
 
 | Variable | Effect |
 |---|---|
-| `FREE3D_DEMO_SCENE=1..9` | Boot straight into a prepared scene (1 solids, 4 sketch, 6 drawing with BOM, 9 assembly…) |
-| `FREE3D_DUMP_FRAME=/path.png` | Write every rendered viewport frame to disk — headless render verification |
-| `FREE3D_IO_CHECK=1` | Run a headless STEP/OBJ/glTF/… round-trip check and exit |
-| `FREE3D_LANG=en\|zh-CN` | Force the UI language |
-| `FREE3D_SETTINGS_DIR`, `FREE3D_DESIGNS_DIR` | Redirect settings / design library (isolated test profiles) |
+| `DUCTILE_DEMO_SCENE=1..9` | Boot straight into a prepared scene (1 solids, 4 sketch, 6 drawing with BOM, 9 assembly…) |
+| `DUCTILE_THEME=light\|dark` | Force the startup theme |
+| `DUCTILE_DUMP_FRAME=/path.png` | Write every rendered viewport frame to disk — headless render verification |
+| `DUCTILE_IO_CHECK=1` | Run a headless STEP/OBJ/glTF/… round-trip check and exit |
+| `DUCTILE_ANALYSIS=zebra` | Start with zebra surface analysis enabled |
+| `DUCTILE_LANG=en\|zh-CN` | Force the UI language |
+| `DUCTILE_SETTINGS_DIR`, `DUCTILE_DESIGNS_DIR` | Redirect settings / design library (isolated test profiles) |
 
 Project layout: `src/` is the application (viewport, tools, UI, document/history); `crates/occt-bridge` is the cxx bridge to OpenCASCADE (every throwing call returns `Result`); `crates/occt` is the safe Rust geometry API on top of it.
 
@@ -56,7 +58,7 @@ cargo build 2>&1 | grep warning   # zero warnings expected
 - Keep PRs focused — one topic per PR is much easier to review.
 - New user-visible strings go through `crate::i18n::t(...)` with a Simplified Chinese entry in `src/i18n.rs`.
 - New behavior needs a test when the logic is testable headlessly (geometry, document ops, formatters).
-- GPU/rendering changes deserve a manual check with `FREE3D_DUMP_FRAME` — WGSL errors only surface on a real GPU at runtime.
+- GPU/rendering changes deserve a manual check with `DUCTILE_DUMP_FRAME` — WGSL errors only surface on a real GPU at runtime.
 
 Small fixes are welcome without prior discussion; for larger changes, opening an issue first saves everyone time.
 

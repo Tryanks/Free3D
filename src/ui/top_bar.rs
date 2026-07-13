@@ -6,7 +6,7 @@ use gpui::{
 };
 
 use crate::{
-    app::Free3dApp,
+    app::DuctileApp,
     commands::AppCommand,
     i18n::{LangChoice, ZH_ENDONYM},
     nav::NavPreset,
@@ -15,7 +15,7 @@ use crate::{
 };
 
 /// Builds the floating top bar as two anchored pills over the viewport.
-pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+pub fn render(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     div()
         .absolute()
@@ -30,7 +30,7 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
         .child(right_pill(app, cx))
 }
 
-fn left_pill(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn left_pill(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     ui::surface(theme)
         .h(px(theme.control + 6.0))
@@ -65,7 +65,7 @@ fn left_pill(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
         )
 }
 
-fn right_pill(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn right_pill(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     div()
         .relative()
@@ -114,7 +114,7 @@ fn right_pill(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
         })
 }
 
-fn settings_popover(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn settings_popover(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let mut preset_menu = div().flex().flex_col().gap(px(1.0));
     if app.show_nav_presets {
@@ -251,7 +251,7 @@ fn settings_popover(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEl
     .priority(2)
 }
 
-fn language_buttons(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn language_buttons(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let mut row = div().flex().gap(theme.space(1.0));
     for (choice, label) in [
@@ -283,7 +283,7 @@ fn language_buttons(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEl
     row
 }
 
-fn autosave_buttons(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn autosave_buttons(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let mut row = div().flex().gap(theme.space(1.0));
     for seconds in [0, 60, 180, 300] {
@@ -311,7 +311,7 @@ fn autosave_buttons(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEl
     row
 }
 
-fn unit_buttons(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn unit_buttons(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let mut row = div().flex().flex_wrap().gap(theme.space(1.0));
     for units in Units::ALL {
@@ -345,7 +345,7 @@ fn settings_label(theme: &crate::theme::Theme, label: &'static str) -> impl Into
         .child(label)
 }
 
-fn theme_button(app: &Free3dApp, dark: bool, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn theme_button(app: &DuctileApp, dark: bool, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let selected = app.theme.is_dark == dark;
     div()
@@ -374,11 +374,11 @@ fn theme_button(app: &Free3dApp, dark: bool, cx: &mut Context<Free3dApp>) -> imp
 }
 
 fn file_button(
-    app: &Free3dApp,
+    app: &DuctileApp,
     label: &'static str,
     icon: &'static str,
     command: AppCommand,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) -> impl IntoElement {
     let theme = &app.theme;
     div()

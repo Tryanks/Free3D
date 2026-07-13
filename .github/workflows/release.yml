@@ -12,7 +12,7 @@ jobs:
   build:
     name: Build ${{ matrix.artifact }}
     runs-on: ${{ matrix.runner }}
-    # Free3D is developed primarily on macOS; other targets are built on a
+    # Ductile is developed primarily on macOS; other targets are built on a
     # best-effort basis and must not block a release while they stabilize.
     continue-on-error: ${{ matrix.experimental }}
     timeout-minutes: 120
@@ -21,22 +21,22 @@ jobs:
       matrix:
         include:
           - runner: macos-15
-            artifact: free3d-macos-aarch64
+            artifact: ductile-macos-aarch64
             experimental: false
           - runner: macos-15-intel
-            artifact: free3d-macos-x86_64
+            artifact: ductile-macos-x86_64
             experimental: true
           - runner: ubuntu-24.04
-            artifact: free3d-linux-x86_64
+            artifact: ductile-linux-x86_64
             experimental: true
           - runner: ubuntu-24.04-arm
-            artifact: free3d-linux-aarch64
+            artifact: ductile-linux-aarch64
             experimental: true
           - runner: windows-2025
-            artifact: free3d-windows-x86_64
+            artifact: ductile-windows-x86_64
             experimental: true
           - runner: windows-11-arm
-            artifact: free3d-windows-aarch64
+            artifact: ductile-windows-aarch64
             experimental: true
     steps:
       - uses: actions/checkout@v4
@@ -67,31 +67,31 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
-            otool -L target/release/free3d
-            if otool -L target/release/free3d | tail -n +2 | grep -vE '^\s+(/System/|/usr/lib/)'; then
+            otool -L target/release/ductile
+            if otool -L target/release/ductile | tail -n +2 | grep -vE '^\s+(/System/|/usr/lib/)'; then
               echo "::error::non-system dynamic libraries detected"; exit 1
             fi
           else
-            ldd target/release/free3d
+            ldd target/release/ductile
           fi
 
       - name: Package (macOS .app)
         if: runner.os == 'macOS'
         run: |
-          APP="Free3D.app"
+          APP="Ductile.app"
           mkdir -p "$APP/Contents/MacOS"
-          cp target/release/free3d "$APP/Contents/MacOS/Free3D"
+          cp target/release/ductile "$APP/Contents/MacOS/Ductile"
           cat > "$APP/Contents/Info.plist" <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>CFBundleName</key><string>Free3D</string>
-            <key>CFBundleDisplayName</key><string>Free3D</string>
-            <key>CFBundleIdentifier</key><string>com.tryanks.free3d</string>
-            <key>CFBundleExecutable</key><string>Free3D</string>
+            <key>CFBundleName</key><string>Ductile</string>
+            <key>CFBundleDisplayName</key><string>Ductile</string>
+            <key>CFBundleIdentifier</key><string>com.tryanks.ductile</string>
+            <key>CFBundleExecutable</key><string>Ductile</string>
             <key>CFBundlePackageType</key><string>APPL</string>
-            <key>CFBundleShortVersionString</key><string>0.1.0</string>
+            <key>CFBundleShortVersionString</key><string>0.2.0</string>
             <key>NSHighResolutionCapable</key><true/>
           </dict>
           </plist>
@@ -101,13 +101,13 @@ jobs:
       - name: Package (Linux tar.gz)
         if: runner.os == 'Linux'
         run: |
-          install -Dm755 target/release/free3d dist/free3d
-          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" free3d
+          install -Dm755 target/release/ductile dist/ductile
+          tar -C dist -czf "${{ matrix.artifact }}.tar.gz" ductile
 
       - name: Package (Windows zip)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path target/release/free3d.exe -DestinationPath "${{ matrix.artifact }}.zip"
+        run: Compress-Archive -Path target/release/ductile.exe -DestinationPath "${{ matrix.artifact }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

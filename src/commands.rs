@@ -1,7 +1,7 @@
 //! Application command vocabulary dispatched by the root view.
 //!
 //! The floating chrome never mutates the viewport or document directly; it
-//! emits [`AppCommand`]s that [`crate::app::Free3dApp`] interprets. Modeling
+//! emits [`AppCommand`]s that [`crate::app::DuctileApp`] interprets. Modeling
 //! tools are stubs at this milestone: activating one only tracks selection
 //! state so the UI can render active highlights.
 

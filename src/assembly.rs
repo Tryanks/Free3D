@@ -368,7 +368,8 @@ mod tests {
             .unwrap();
         document.set_joint_value(id, 0.7, 0.0);
         let expected = document.bodies[1].pose;
-        let path = std::env::temp_dir().join(format!("free3d-assembly-{}.f3d", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("ductile-assembly-{}.ductile", std::process::id()));
         document.save_to(&path).unwrap();
         let loaded = Document::load_from(&path).unwrap();
         let _ = std::fs::remove_file(path);

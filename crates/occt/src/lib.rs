@@ -1,6 +1,12 @@
-//! Safe, application-oriented OpenCASCADE bindings for Free3D.
+//! Safe, application-oriented OpenCASCADE bindings for Ductile.
 
-use std::{error::Error, fmt, ops::Range, path::Path};
+use std::{
+    error::Error,
+    fmt,
+    ops::Range,
+    path::Path,
+    sync::{Mutex, PoisonError},
+};
 
 use cxx::UniquePtr;
 use glam::DVec3;
@@ -259,6 +265,15 @@ impl Face {
     pub fn as_shape(&self) -> &Shape {
         &self.0
     }
+}
+
+/// Serializes OCCT data exchange: the STEP/IGES translators mutate shared,
+/// unsynchronized process globals (`Interface_Static` tables, one-shot
+/// controller initialization), so concurrent calls crash.
+static DATA_EXCHANGE_LOCK: Mutex<()> = Mutex::new(());
+
+fn data_exchange_guard() -> std::sync::MutexGuard<'static, ()> {
+    DATA_EXCHANGE_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 impl Shape {
@@ -627,6 +642,7 @@ impl Shape {
 
     /// Reads and transfers every root from a STEP file.
     pub fn from_step_file(path: &str) -> Result<Self, OcctError> {
+        let _exchange = data_exchange_guard();
         Self::from_ffi(ffi::shape_from_step_file(path)?)
     }
 
@@ -637,6 +653,7 @@ impl Shape {
 
     /// Reads and transfers every root from an IGES file.
     pub fn read_iges(path: &Path) -> Result<Self, OcctError> {
+        let _exchange = data_exchange_guard();
         Self::from_ffi(ffi::shape_from_iges_file(path_string(path)?)?)
     }
 
@@ -655,6 +672,7 @@ impl Shape {
         shapes: impl IntoIterator<Item = &'a Shape>,
         path: &Path,
     ) -> Result<(), OcctError> {
+        let _exchange = data_exchange_guard();
         let mut writer = ffi::make_step_writer()?;
         for shape in shapes {
             ffi::step_writer_add(writer.pin_mut(), shape.as_ref())?;
@@ -670,6 +688,7 @@ impl Shape {
         shapes: impl IntoIterator<Item = &'a Shape>,
         path: &Path,
     ) -> Result<(), OcctError> {
+        let _exchange = data_exchange_guard();
         let mut writer = ffi::make_iges_writer()?;
         for shape in shapes {
             ffi::iges_writer_add(writer.pin_mut(), shape.as_ref())?;

@@ -12,7 +12,7 @@ use gpui::{ClickEvent, Context, FontWeight, ImageSource, RenderImage, div, img, 
 use image::{Frame, RgbaImage};
 use smallvec::smallvec;
 
-use crate::{app::Free3dApp, i18n::Lang, ui};
+use crate::{app::DuctileApp, i18n::Lang, ui};
 
 /// One project shown in the design library.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -25,12 +25,12 @@ pub struct DesignEntry {
 
 /// Returns the overridable, non-recursive design-library folder.
 pub fn designs_dir() -> PathBuf {
-    std::env::var_os("FREE3D_DESIGNS_DIR").map_or_else(
+    std::env::var_os("DUCTILE_DESIGNS_DIR").map_or_else(
         || {
             dirs::document_dir()
                 .or_else(dirs::home_dir)
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("Free3D")
+                .join("Ductile")
         },
         PathBuf::from,
     )
@@ -40,13 +40,12 @@ pub fn designs_dir() -> PathBuf {
 pub fn list_designs_in(folder: &Path, recent: &[PathBuf]) -> Vec<DesignEntry> {
     let mut paths = Vec::new();
     if let Ok(entries) = std::fs::read_dir(folder) {
-        paths.extend(entries.flatten().map(|entry| entry.path()).filter(|path| {
-            path.is_file()
-                && path
-                    .extension()
-                    .and_then(|extension| extension.to_str())
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("f3d"))
-        }));
+        paths.extend(
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.is_file() && crate::app::is_project_file(path)),
+        );
     }
     paths.extend(recent.iter().filter(|path| path.is_file()).cloned());
     let mut seen = HashSet::new();
@@ -81,7 +80,6 @@ pub fn unique_copy_path(source: &Path, language: Lang) -> PathBuf {
         .file_stem()
         .and_then(|value| value.to_str())
         .unwrap_or("Design");
-    let extension = source.extension().and_then(|value| value.to_str());
     let suffix = if language == Lang::ZhCn {
         " 副本"
     } else {
@@ -94,9 +92,7 @@ pub fn unique_copy_path(source: &Path, language: Lang) -> PathBuf {
             format!("{stem}{suffix} {number}")
         };
         let mut candidate = parent.join(name);
-        if let Some(extension) = extension {
-            candidate.set_extension(extension);
-        }
+        candidate.set_extension("ductile");
         if !candidate.exists() {
             return candidate;
         }
@@ -142,7 +138,7 @@ fn stem(path: &Path) -> String {
 }
 
 /// Renders the full-window project gallery.
-pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+pub fn render(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let now = SystemTime::now();
     let query = app.home_query.trim().to_lowercase();
@@ -164,7 +160,7 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
         .bg(theme.well)
         .text_color(theme.text)
         .track_focus(&app.home_focus)
-        .on_key_down(cx.listener(Free3dApp::home_key_down))
+        .on_key_down(cx.listener(DuctileApp::home_key_down))
         .flex()
         .flex_col()
         .child(
@@ -181,7 +177,7 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
                     div()
                         .text_size(px(24.0))
                         .font_weight(FontWeight::BOLD)
-                        .child(crate::i18n::t("Free3D")),
+                        .child(crate::i18n::t("Ductile")),
                 )
                 .child(
                     div()
@@ -248,7 +244,7 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
         )
 }
 
-fn new_design_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn new_design_card(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     div()
         .id("new-design-card")
@@ -275,11 +271,11 @@ fn new_design_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEle
 }
 
 fn design_card(
-    app: &Free3dApp,
+    app: &DuctileApp,
     design: &DesignEntry,
     index: usize,
     now: SystemTime,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) -> impl IntoElement {
     let theme = &app.theme;
     let path = design.path.clone();
@@ -381,28 +377,28 @@ fn design_card(
                         app,
                         "Rename",
                         rename_path,
-                        Free3dApp::begin_home_rename,
+                        DuctileApp::begin_home_rename,
                         cx,
                     ))
                     .child(menu_row(
                         app,
                         "Duplicate",
                         duplicate_path,
-                        Free3dApp::duplicate_design,
+                        DuctileApp::duplicate_design,
                         cx,
                     ))
                     .child(menu_row(
                         app,
                         "Delete",
                         delete_path,
-                        Free3dApp::trash_design,
+                        DuctileApp::trash_design,
                         cx,
                     ))
                     .child(menu_row(
                         app,
                         "Reveal in Finder",
                         reveal_path,
-                        Free3dApp::reveal_design,
+                        DuctileApp::reveal_design,
                         cx,
                     )),
             )
@@ -418,11 +414,11 @@ fn design_card(
 }
 
 fn menu_row(
-    app: &Free3dApp,
+    app: &DuctileApp,
     label: &'static str,
     path: PathBuf,
-    action: fn(&mut Free3dApp, PathBuf, &mut gpui::Window, &mut Context<Free3dApp>),
-    cx: &mut Context<Free3dApp>,
+    action: fn(&mut DuctileApp, PathBuf, &mut gpui::Window, &mut Context<DuctileApp>),
+    cx: &mut Context<DuctileApp>,
 ) -> impl IntoElement {
     let theme = &app.theme;
     div()
@@ -469,16 +465,24 @@ mod tests {
     #[test]
     fn duplicate_names_are_unique() {
         let directory = tempfile::tempdir().unwrap();
-        let source = directory.path().join("Part.f3d");
+        let source = directory.path().join("Part.ductile");
         std::fs::write(&source, b"x").unwrap();
         assert_eq!(
             unique_copy_path(&source, Lang::En),
-            directory.path().join("Part Copy.f3d")
+            directory.path().join("Part Copy.ductile")
         );
-        std::fs::write(directory.path().join("Part Copy.f3d"), b"x").unwrap();
+        std::fs::write(directory.path().join("Part Copy.ductile"), b"x").unwrap();
         assert_eq!(
             unique_copy_path(&source, Lang::En),
-            directory.path().join("Part Copy 2.f3d")
+            directory.path().join("Part Copy 2.ductile")
+        );
+
+        let legacy = directory.path().join("Legacy.f3d");
+        std::fs::write(&legacy, b"legacy").unwrap();
+        std::fs::write(directory.path().join("Legacy Copy.ductile"), b"x").unwrap();
+        assert_eq!(
+            unique_copy_path(&legacy, Lang::En),
+            directory.path().join("Legacy Copy 2.ductile")
         );
     }
 
@@ -501,27 +505,29 @@ mod tests {
 
     #[test]
     fn rename_updates_recent_paths() {
-        let old = PathBuf::from("old.f3d");
-        let new = PathBuf::from("new.f3d");
-        let mut recent = vec![PathBuf::from("other.f3d"), old.clone()];
+        let old = PathBuf::from("old.ductile");
+        let new = PathBuf::from("new.ductile");
+        let mut recent = vec![PathBuf::from("other.ductile"), old.clone()];
         rename_recent_paths(&mut recent, &old, &new);
-        assert_eq!(recent, vec![PathBuf::from("other.f3d"), new]);
+        assert_eq!(recent, vec![PathBuf::from("other.ductile"), new]);
     }
 
     #[test]
     fn listing_unions_deduplicates_and_sorts() {
         let directory = tempfile::tempdir().unwrap();
-        let first = directory.path().join("first.f3d");
-        let second = directory.path().join("second.f3d");
+        let first = directory.path().join("first.ductile");
+        let second = directory.path().join("second.ductile");
         std::fs::write(&first, b"1").unwrap();
         std::thread::sleep(Duration::from_millis(20));
         std::fs::write(&second, b"2").unwrap();
-        let external = tempfile::NamedTempFile::with_suffix(".f3d").unwrap();
+        let external = tempfile::NamedTempFile::with_suffix(".ductile").unwrap();
+        let legacy = directory.path().join("legacy.F3D");
+        std::fs::write(&legacy, b"legacy").unwrap();
         let listed = list_designs_in(
             directory.path(),
             &[first.clone(), external.path().to_owned()],
         );
-        assert_eq!(listed.len(), 3);
+        assert_eq!(listed.len(), 4);
         let second_position = listed.iter().position(|item| item.path == second).unwrap();
         let first_position = listed.iter().position(|item| item.path == first).unwrap();
         assert!(second_position < first_position);
@@ -531,11 +537,11 @@ mod tests {
     #[test]
     fn listing_uses_designs_directory_override() {
         let directory = tempfile::tempdir().unwrap();
-        let design = directory.path().join("override.f3d");
+        let design = directory.path().join("override.ductile");
         std::fs::write(&design, b"{}").unwrap();
         // SAFETY: this is the only home test that changes this variable.
-        unsafe { std::env::set_var("FREE3D_DESIGNS_DIR", directory.path()) };
+        unsafe { std::env::set_var("DUCTILE_DESIGNS_DIR", directory.path()) };
         assert_eq!(list_designs(&[])[0].path, design);
-        unsafe { std::env::remove_var("FREE3D_DESIGNS_DIR") };
+        unsafe { std::env::remove_var("DUCTILE_DESIGNS_DIR") };
     }
 }
