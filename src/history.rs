@@ -782,7 +782,7 @@ impl HistoryOp {
             Self::AddReferenceImage { .. } => "image",
             Self::Extrude { .. } | Self::SurfaceExtrude { .. } => "extrude",
             Self::OffsetFace { .. } | Self::OffsetFaces { .. } => "offset",
-            Self::ReplaceFace { .. } => "offset",
+            Self::ReplaceFace { .. } => "replace-face",
             Self::Boolean { op, .. } => match op {
                 BooleanOp::Union => "union",
                 BooleanOp::Subtract => "subtract",
@@ -791,7 +791,7 @@ impl HistoryOp {
             Self::Fillet { .. } | Self::Chamfer { .. } => "fillet",
             Self::Shell { .. } => "shell",
             Self::Hole { .. } => "hole",
-            Self::Draft { .. } => "offset",
+            Self::Draft { .. } => "draft",
             Self::Transform { .. } => "move",
             Self::MultiTransform { .. } => "move",
             Self::Scale { .. } => "scale",

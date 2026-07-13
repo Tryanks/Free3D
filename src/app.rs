@@ -306,10 +306,13 @@ impl Free3dApp {
         let saved_revision = document.read(cx).revision;
         let document_subscription = cx.observe(&document, |_app, _, cx| cx.notify());
         let viewport_subscription = cx.subscribe(&viewport, |app, _, event, cx| {
-            if matches!(event, ViewportEvent::ModesExited) {
-                app.active_modes = [false; 4];
-                app.exploded_factor = 0.0;
-                cx.notify();
+            match event {
+                ViewportEvent::ModesExited => {
+                    app.active_modes = [false; 4];
+                    app.exploded_factor = 0.0;
+                    cx.notify();
+                }
+                ViewportEvent::InteractionChanged => cx.notify(),
             }
         });
         let demo_section = std::env::var("FREE3D_DEMO_SCENE").is_ok_and(|scene| scene == "5");
@@ -3600,7 +3603,7 @@ impl Render for Free3dApp {
             }
             return crate::home::render(self, cx).into_any_element();
         }
-        window.set_window_title(&format!("{} — Free3D", self.project_label(cx)));
+        window.set_window_title("Free3D");
         if self.space == Space::Drawing {
             self.refresh_drawing_cache(cx);
         }
@@ -3621,12 +3624,6 @@ impl Render for Free3dApp {
             .child(ui::tool_strip::render(this, cx))
             .when(this.space == Space::Modeling, |root| {
                 root.children(ui::adaptive_menu::render(this, cx))
-            })
-            .when(this.space == Space::Modeling, |root| {
-                root.child(ui::panels::render(this, cx))
-            })
-            .when(this.space == Space::Modeling, |root| {
-                root.child(ui::modes::render(this, cx))
             })
             .child(ui::view_cluster::render(this, cx))
             .children(ui::command_search::render(this, cx))

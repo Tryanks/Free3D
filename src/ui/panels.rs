@@ -47,16 +47,13 @@ pub struct ItemRow {
     pub grounded: bool,
 }
 
-/// Builds the stacked left-side panels below the tool rail.
+/// Builds the shrinkable stack of left-side modeling panels.
 pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
     let theme = &app.theme;
-    let left = px(tool_strip::LEFT_INSET);
-    let top = px(tool_strip::panels_top(theme));
 
     div()
-        .absolute()
-        .top(top)
-        .left(left)
+        .min_h(px(0.0))
+        .overflow_hidden()
         .flex()
         .flex_col()
         .gap(theme.space(2.0))
@@ -310,8 +307,7 @@ fn items_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
     let joints = document.joints.clone();
     let over_constrained = document.over_constrained;
     let _ = document;
-    // Fixed cap keeps the card clear of the bottom-left modes group; longer
-    // lists scroll within.
+    // Longer lists scroll within the card's fixed cap.
     let mut list = div()
         .id("items-rows")
         .flex()
@@ -433,7 +429,14 @@ fn items_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
 fn history_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
     let theme = &app.theme;
     let rows = app.document.read(cx).history.clone();
-    let mut list = div().flex().flex_col().gap(px(1.0)).px(theme.space(1.0));
+    let mut list = div()
+        .id("history-rows")
+        .flex()
+        .flex_col()
+        .gap(px(1.0))
+        .px(theme.space(1.0))
+        .max_h(px(190.0))
+        .overflow_y_scroll();
     for (index, step) in rows.iter().enumerate() {
         list = list.child(history_row(app, index, step, cx));
     }

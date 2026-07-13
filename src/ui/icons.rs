@@ -201,11 +201,20 @@ fn icon_body(name: &str) -> Option<&'static str> {
             r#"<path d="M4 8h12v10H4zM8 4h12v10"/><path d="M4 8l4-4M16 8l4-4M16 18l4-4"/>"#
         }
         "delete-face" => r#"<path d="M4 6h16v12H4z"/><path d="M8 9l8 6M16 9l-8 6"/>"#,
-        "shell" => r#"<path d="M4 4h16v16H4z"/><path d="M8 8h8v8H8z"/>"#,
+        "exploded" => {
+            r#"<path d="M9.5 9.5h5v5h-5z"/><path d="M12 6.5V3M10.2 4.6 12 2.8l1.8 1.8M12 17.5V21M10.2 19.4l1.8 1.8 1.8-1.8M6.5 12H3M4.6 10.2 2.8 12l1.8 1.8M17.5 12H21M19.4 10.2l1.8 1.8-1.8 1.8"/>"#
+        }
+        "shell" => r#"<path d="M4 5v15h16V5"/><path d="M8 5v11h8V5"/>"#,
         "fillet" => {
             r#"<path d="M5 19V10a5 5 0 0 1 5-5h9"/><path d="M5 5v14h14" stroke-dasharray="2 2"/>"#
         }
-        "offset" => r#"<path d="M4 8h12v12H4z"/><path d="M8 8V4h12v12h-4"/>"#,
+        "offset" => r#"<path d="M4 5h9v14H4z"/><path d="M16 12h5"/><path d="M18.8 9.8 21 12l-2.2 2.2"/>"#,
+        "draft" => {
+            r#"<path d="M4 20h16"/><path d="M7 20V6"/><path d="M7 20 17 5"/><path d="M7 11c1.8 0 3.4.7 4.6 1.9"/>"#
+        }
+        "replace-face" => {
+            r#"<path d="M4 10v10h16V10"/><path d="M4 10h16" stroke-dasharray="2 2"/><path d="M4 6c5-3.4 11-3.4 16 0"/>"#
+        }
         "split" => r#"<path d="M4 5h16v14H4z"/><path d="M12 5v14" stroke-dasharray="2 2"/>"#,
         "project" => r#"<path d="M12 3v9M9 9l3 3 3-3"/><ellipse cx="12" cy="18" rx="7" ry="2.5"/>"#,
         "union" => r#"<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/>"#,

@@ -61,6 +61,19 @@ use crate::{
 use orientation_cube::Region as CubeRegion;
 use renderer::{ExtrudeArrowRender, GizmoRender, OrientationCubeRender, Renderer};
 
+/// Shared pill styling for the floating viewport mode badges.
+fn badge_chip(active: bool) -> gpui::Div {
+    let chip = div().px_2().py_1().rounded_md();
+    if active {
+        chip.bg(rgba(0xff6a2fff)).text_color(rgba(0xffffffff))
+    } else {
+        chip.bg(rgba(0xffffffe8))
+            .text_color(rgba(0x49515aff))
+            .border_1()
+            .border_color(rgba(0x16202b14))
+    }
+}
+
 /// Body/edge presentation used by the right-side display row.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum DisplayMode {
@@ -113,6 +126,8 @@ pub enum AnalysisMode {
 pub enum ViewportEvent {
     /// Escape exited every active bottom-left viewport mode.
     ModesExited,
+    /// A modeling pointer interaction started or ended.
+    InteractionChanged,
 }
 
 impl EventEmitter<ViewportEvent> for Viewport {}
@@ -1170,6 +1185,51 @@ pub struct Viewport {
 }
 
 impl Viewport {
+    /// Returns whether a modeling pointer-drag is currently in flight.
+    pub fn interaction_in_progress(&self) -> bool {
+        self.gizmo_drag.is_some()
+            || self.extrude_drag.is_some()
+            || self.profile_extrude_drag.is_some()
+            || self.open_chain_extrude_drag.is_some()
+            || self.dressup_drag.is_some()
+            || self.shell_drag.is_some()
+            || self.thicken_drag.is_some()
+            || self
+                .revolve_interaction
+                .as_ref()
+                .is_some_and(|interaction| interaction.start_x.is_some())
+            || self
+                .hole_interaction
+                .as_ref()
+                .is_some_and(|interaction| interaction.start_x.is_some())
+            || self
+                .draft_interaction
+                .as_ref()
+                .is_some_and(|interaction| interaction.start_x.is_some())
+            || self
+                .pattern_interaction
+                .as_ref()
+                .is_some_and(|interaction| interaction.start_x.is_some())
+            || self
+                .sketch_pattern_interaction
+                .as_ref()
+                .is_some_and(|interaction| interaction.anchor.is_some())
+            || self.joint_drive.is_some()
+            || self.m6_interaction.as_ref().is_some_and(|interaction| {
+                matches!(
+                    interaction,
+                    M6Interaction::ConstructionPlane { drag: Some(_), .. }
+                        | M6Interaction::Scale { drag: Some(_), .. }
+                        | M6Interaction::Split { drag: Some(_), .. }
+                )
+            })
+            || self.sketch_press.is_some()
+            || self.sketch_entity_drag.is_some()
+            || self.sketch_interaction.as_ref().is_some_and(|interaction| {
+                interaction.fillet_pair.is_some() || interaction.edit_profile.is_some()
+            })
+    }
+
     fn arrow_hit_test(&self, pointer: Vec2, origin: Vec3, normal: Vec3, scale: f32) -> bool {
         let normal = normal.normalize_or_zero();
         let center = origin + normal * scale * ARROW_SURFACE_OFFSET;
@@ -7090,6 +7150,19 @@ impl Viewport {
         }
     }
 
+    fn mouse_down_with_interaction_event(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let interaction_in_progress = self.interaction_in_progress();
+        self.mouse_down(event, window, cx);
+        if interaction_in_progress != self.interaction_in_progress() {
+            cx.emit(ViewportEvent::InteractionChanged);
+        }
+    }
+
     fn mouse_move(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
         let pointer = Self::pointer(event.position, window.scale_factor());
         let delta = pointer - self.last_pointer;
@@ -7725,6 +7798,19 @@ impl Viewport {
         }
         self.dragging = None;
         self.changed(window, cx);
+    }
+
+    fn mouse_up_with_interaction_event(
+        &mut self,
+        event: &MouseUpEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let interaction_in_progress = self.interaction_in_progress();
+        self.mouse_up(event, window, cx);
+        if interaction_in_progress != self.interaction_in_progress() {
+            cx.emit(ViewportEvent::InteractionChanged);
+        }
     }
 
     fn scroll(&mut self, event: &ScrollWheelEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -9122,6 +9208,19 @@ impl Viewport {
         }
     }
 
+    fn key_down_with_interaction_event(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let interaction_in_progress = self.interaction_in_progress();
+        self.key_down(event, window, cx);
+        if interaction_in_progress != self.interaction_in_progress() {
+            cx.emit(ViewportEvent::InteractionChanged);
+        }
+    }
+
     fn render_image(
         &mut self,
         window: &mut Window,
@@ -9531,19 +9630,46 @@ impl Render for Viewport {
             .relative()
             .size_full()
             .track_focus(&self.focus_handle)
-            .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
-            .on_mouse_down(MouseButton::Right, cx.listener(Self::mouse_down))
-            .on_mouse_down(MouseButton::Middle, cx.listener(Self::mouse_down))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
-            .on_mouse_up(MouseButton::Right, cx.listener(Self::mouse_up))
-            .on_mouse_up(MouseButton::Middle, cx.listener(Self::mouse_up))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(Self::mouse_up))
-            .on_mouse_up_out(MouseButton::Right, cx.listener(Self::mouse_up))
-            .on_mouse_up_out(MouseButton::Middle, cx.listener(Self::mouse_up))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(Self::mouse_down_with_interaction_event),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(Self::mouse_down_with_interaction_event),
+            )
+            .on_mouse_down(
+                MouseButton::Middle,
+                cx.listener(Self::mouse_down_with_interaction_event),
+            )
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(Self::mouse_up_with_interaction_event),
+            )
+            .on_mouse_up(
+                MouseButton::Right,
+                cx.listener(Self::mouse_up_with_interaction_event),
+            )
+            .on_mouse_up(
+                MouseButton::Middle,
+                cx.listener(Self::mouse_up_with_interaction_event),
+            )
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(Self::mouse_up_with_interaction_event),
+            )
+            .on_mouse_up_out(
+                MouseButton::Right,
+                cx.listener(Self::mouse_up_with_interaction_event),
+            )
+            .on_mouse_up_out(
+                MouseButton::Middle,
+                cx.listener(Self::mouse_up_with_interaction_event),
+            )
             .on_mouse_move(cx.listener(Self::mouse_move))
             .on_scroll_wheel(cx.listener(Self::scroll))
             .on_pinch(cx.listener(Self::pinch))
-            .on_key_down(cx.listener(Self::key_down))
+            .on_key_down(cx.listener(Self::key_down_with_interaction_event))
             .when_some(image, |element, image| {
                 element.child(img(ImageSource::Render(image)).size_full())
             })
@@ -9958,17 +10084,8 @@ impl Render for Viewport {
                             ]
                             .into_iter()
                             .map(|(label, active, index)| {
-                                div()
+                                badge_chip(active)
                                     .id(("hole-kind", index))
-                                    .px_2()
-                                    .py_1()
-                                    .rounded_md()
-                                    .bg(if active {
-                                        rgba(0xff6a2fff)
-                                    } else {
-                                        rgba(0x20262eee)
-                                    })
-                                    .text_color(rgba(0xf3f5f7ff))
                                     .text_size(px(11.0))
                                     .child(label)
                                     .on_mouse_down(
@@ -9996,17 +10113,8 @@ impl Render for Viewport {
                                 ]
                                 .into_iter()
                                 .map(|(label, index)| {
-                                    div()
+                                    badge_chip(cut == index)
                                         .id(("hole-cut", index))
-                                        .px_2()
-                                        .py_1()
-                                        .rounded_md()
-                                        .bg(if cut == index {
-                                            rgba(0xff6a2fff)
-                                        } else {
-                                            rgba(0x20262eee)
-                                        })
-                                        .text_color(rgba(0xf3f5f7ff))
                                         .text_size(px(11.0))
                                         .child(label)
                                         .on_mouse_down(
@@ -10135,18 +10243,9 @@ impl Render for Viewport {
                         .child(input)
                         .when(dimension_edit, |row| {
                             row.child(
-                                div()
+                                badge_chip(dimension_reference)
                                     .id("dimension-reference-toggle")
-                                    .px_2()
-                                    .py_1()
-                                    .rounded_md()
                                     .cursor_pointer()
-                                    .bg(if dimension_reference {
-                                        rgba(0xff6a2fff)
-                                    } else {
-                                        rgba(0x20262eee)
-                                    })
-                                    .text_color(rgba(0xf3f5f7ff))
                                     .text_size(px(11.0))
                                     .child(crate::i18n::t("Reference"))
                                     .on_mouse_down(
@@ -10219,17 +10318,8 @@ impl Render for Viewport {
                                 .into_iter()
                                 .enumerate()
                                 .map(|(index, (mode, active))| {
-                                    div()
+                                    badge_chip(active)
                                         .id(("extrude-mode", index))
-                                        .px_2()
-                                        .py_1()
-                                        .rounded_md()
-                                        .bg(if active {
-                                            rgba(0xff6a2fff)
-                                        } else {
-                                            rgba(0x20262eee)
-                                        })
-                                        .text_color(rgba(0xf3f5f7ff))
                                         .text_size(px(11.0))
                                         .child(mode.label())
                                         .on_mouse_down(
@@ -10251,21 +10341,12 @@ impl Render for Viewport {
                         .flex()
                         .gap_1()
                         .children([false, true].into_iter().map(|mode| {
-                            div()
+                            badge_chip(variable == mode)
                                 .id(if mode {
                                     "variable-fillet"
                                 } else {
                                     "constant-fillet"
                                 })
-                                .px_2()
-                                .py_1()
-                                .rounded_md()
-                                .bg(if variable == mode {
-                                    rgba(0xff6a2fff)
-                                } else {
-                                    rgba(0x20262eee)
-                                })
-                                .text_color(rgba(0xf3f5f7ff))
                                 .text_size(px(11.0))
                                 .child(if mode {
                                     crate::i18n::t("Variable")
@@ -10296,21 +10377,12 @@ impl Render for Viewport {
                             ]
                             .into_iter()
                             .map(|(value, label)| {
-                                div()
+                                badge_chip(external == value)
                                     .id(if value {
                                         "external-thread"
                                     } else {
                                         "internal-thread"
                                     })
-                                    .px_2()
-                                    .py_1()
-                                    .rounded_md()
-                                    .bg(if external == value {
-                                        rgba(0xff6a2fff)
-                                    } else {
-                                        rgba(0x20262eee)
-                                    })
-                                    .text_color(rgba(0xf3f5f7ff))
                                     .text_size(px(11.0))
                                     .child(label)
                                     .on_mouse_down(
@@ -10334,21 +10406,12 @@ impl Render for Viewport {
                             ]
                             .into_iter()
                             .map(|(value, label)| {
-                                div()
+                                badge_chip(mode == value)
                                     .id(if value == crate::document::ThreadMode::Cosmetic {
                                         "cosmetic-thread"
                                     } else {
                                         "modeled-thread"
                                     })
-                                    .px_2()
-                                    .py_1()
-                                    .rounded_md()
-                                    .bg(if mode == value {
-                                        rgba(0xff6a2fff)
-                                    } else {
-                                        rgba(0x20262eee)
-                                    })
-                                    .text_color(rgba(0xf3f5f7ff))
                                     .text_size(px(11.0))
                                     .child(label)
                                     .on_mouse_down(
@@ -10374,17 +10437,8 @@ impl Render for Viewport {
                                 .into_iter()
                                 .enumerate()
                                 .map(|(index, (mode, active))| {
-                                    div()
+                                    badge_chip(active)
                                         .id(("extrude-side-mode", index))
-                                        .px_2()
-                                        .py_1()
-                                        .rounded_md()
-                                        .bg(if active {
-                                            rgba(0xff6a2fff)
-                                        } else {
-                                            rgba(0x20262eee)
-                                        })
-                                        .text_color(rgba(0xf3f5f7ff))
                                         .text_size(px(11.0))
                                         .child(mode.label())
                                         .on_mouse_down(
@@ -10410,17 +10464,8 @@ impl Render for Viewport {
                                 .into_iter()
                                 .enumerate()
                                 .map(|(index, mode)| {
-                                    div()
+                                    badge_chip(mode == active_mode)
                                         .id(("pattern-mode", index))
-                                        .px_2()
-                                        .py_1()
-                                        .rounded_md()
-                                        .bg(if mode == active_mode {
-                                            rgba(0xff6a2fff)
-                                        } else {
-                                            rgba(0x20262eee)
-                                        })
-                                        .text_color(rgba(0xf3f5f7ff))
                                         .text_size(px(11.0))
                                         .child(mode.label())
                                         .on_mouse_down(
@@ -10486,17 +10531,8 @@ impl Render for Viewport {
                         .flex()
                         .gap_1()
                         .children([1usize, 2, 3, 5].into_iter().map(|count| {
-                            div()
+                            badge_chip(count == active)
                                 .id(("transform-repeat", count))
-                                .px_2()
-                                .py_1()
-                                .rounded_md()
-                                .bg(if count == active {
-                                    rgba(0xff6a2fff)
-                                } else {
-                                    rgba(0x20262eee)
-                                })
-                                .text_color(rgba(0xf3f5f7ff))
                                 .text_size(px(11.0))
                                 .child(format!("x{count}"))
                                 .on_mouse_down(
@@ -10524,17 +10560,8 @@ impl Render for Viewport {
                             ]
                             .into_iter()
                             .map(|(left, label)| {
-                                div()
+                                badge_chip(left == left_handed)
                                     .id(("helix-hand", usize::from(left)))
-                                    .px_2()
-                                    .py_1()
-                                    .rounded_md()
-                                    .bg(if left == left_handed {
-                                        rgba(0xff6a2fff)
-                                    } else {
-                                        rgba(0x20262eee)
-                                    })
-                                    .text_color(rgba(0xf3f5f7ff))
                                     .text_size(px(11.0))
                                     .child(label)
                                     .on_mouse_down(
@@ -10561,17 +10588,8 @@ impl Render for Viewport {
                         .when_some(axes, |row, axes| {
                             row.children(["X", "Y", "Z"].into_iter().enumerate().map(
                                 |(index, label)| {
-                                    div()
+                                    badge_chip(axes[index])
                                         .id(("align-axis", index))
-                                        .px_2()
-                                        .py_1()
-                                        .rounded_md()
-                                        .bg(if axes[index] {
-                                            rgba(0xff6a2fff)
-                                        } else {
-                                            rgba(0x20262eee)
-                                        })
-                                        .text_color(rgba(0xf3f5f7ff))
                                         .text_size(px(11.0))
                                         .child(label)
                                         .on_mouse_down(

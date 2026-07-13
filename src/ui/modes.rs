@@ -1,22 +1,20 @@
-//! Bottom-left interaction mode group: Section (with a state line), Isolate,
-//! and Measure, stacked vertically as icon + label rows.
+//! Bottom-left interaction mode strip: compact icon toggles for Section,
+//! Isolate, Measure, and Exploded, with the Exploded slider revealed only
+//! while that mode is active.
 
 use gpui::{Context, MouseButton, MouseMoveEvent, div, prelude::*, px};
 
 use crate::{
     app::Free3dApp,
     commands::{AppCommand, ModeChip},
-    ui::{self, glyph},
+    ui::{self, glyph, tip},
 };
 
-/// Builds the vertical mode group anchored to the bottom-left corner.
+/// Builds the compact mode strip pinned to the bottom of the left rail.
 pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
     let theme = &app.theme;
     let mut group = ui::surface(theme)
-        .absolute()
-        .left(px(super::tool_strip::LEFT_INSET))
-        .bottom(theme.space(3.0))
-        .w(px(super::tool_strip::LEFT_WIDTH))
+        .mt_auto()
         .flex()
         .flex_col()
         .gap(px(1.0))
@@ -31,13 +29,19 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
             cx.listener(|this, _, _, _| this.end_exploded_drag()),
         );
 
-    for chip in ModeChip::ALL {
-        group = group.child(mode_chip(app, chip, cx));
+    if app.mode_active(ModeChip::Exploded) {
+        group = group.child(exploded_row(app, cx));
     }
-    group
+
+    let mut strip = div().flex().flex_row().gap(px(1.0));
+    for chip in ModeChip::ALL {
+        strip = strip.child(mode_button(app, chip, cx));
+    }
+    group.child(strip)
 }
 
-fn mode_chip(app: &Free3dApp, chip: ModeChip, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+/// One icon toggle in the strip, labelled via its hover tooltip.
+fn mode_button(app: &Free3dApp, chip: ModeChip, cx: &mut Context<Free3dApp>) -> impl IntoElement {
     let theme = &app.theme;
     let active = app.mode_active(chip);
     let enabled = app.mode_enabled(chip, cx);
@@ -46,100 +50,77 @@ fn mode_chip(app: &Free3dApp, chip: ModeChip, cx: &mut Context<Free3dApp>) -> im
     } else {
         theme.text_muted
     };
-    // Icon column width plus the row gap, so the Section state line aligns
-    // under the label rather than the icon.
-    let indent = px(theme.icon + f32::from(theme.space(1.5)));
 
     div()
         .id(("mode", chip as usize))
+        .size(px(30.0))
         .flex()
-        .flex_col()
-        .gap(px(1.0))
-        .px(theme.space(2.0))
-        .py(theme.space(1.5))
+        .items_center()
+        .justify_center()
         .rounded(px(theme.radius_control))
-        .when(active, |c| c.bg(theme.accent_wash))
-        .when(enabled, |chip| {
-            chip.hover(|s| s.bg(theme.hover))
+        .when(active, |button| button.bg(theme.accent_wash))
+        .when(enabled, |button| {
+            button
+                .hover(|s| s.bg(theme.hover))
                 .active(|s| s.bg(theme.active))
                 .cursor_pointer()
         })
-        .when(!enabled, |chip| chip.opacity(0.42))
-        .child(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(theme.space(1.5))
-                .child(glyph(theme, chip.icon()).text_color(fg))
-                .child(
-                    div()
-                        .flex_1()
-                        .text_size(px(theme.text_md))
-                        .text_color(if active { theme.accent } else { theme.text })
-                        .child(chip.label()),
-                ),
-        )
-        .when(chip == ModeChip::Section, |entry| {
-            entry.child(
-                div()
-                    .pl(indent)
-                    .text_size(px(theme.text_sm))
-                    .text_color(theme.text_faint)
-                    .child(chip.state_label(active)),
-            )
-        })
-        .when(chip == ModeChip::Exploded, |entry| {
-            let fill = app.exploded_factor.clamp(0.0, 1.0);
-            entry.child(
-                div()
-                    .pl(indent)
-                    .flex()
-                    .items_center()
-                    .gap(theme.space(1.0))
-                    .child(
-                        div()
-                            .id("exploded-track")
-                            .relative()
-                            .w(px(120.0))
-                            .h(px(14.0))
-                            .flex()
-                            .items_center()
-                            .cursor_pointer()
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|this, event: &gpui::MouseDownEvent, _window, cx| {
-                                    cx.stop_propagation();
-                                    this.begin_exploded_drag(f32::from(event.position.x));
-                                }),
-                            )
-                            .child(
-                                div()
-                                    .w_full()
-                                    .h(px(4.0))
-                                    .rounded_full()
-                                    .bg(theme.well)
-                                    .child(
-                                        div()
-                                            .w(px(120.0 * fill))
-                                            .h(px(4.0))
-                                            .rounded_full()
-                                            .bg(theme.accent),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .w(px(28.0))
-                            .text_size(px(theme.text_sm))
-                            .text_color(theme.text_faint)
-                            .child(format!("{:.2}", app.exploded_factor)),
-                    ),
-            )
-        })
+        .when(!enabled, |button| button.opacity(0.42))
+        .child(glyph(theme, chip.icon()).text_color(fg))
+        .tooltip(tip(theme, chip.label(), None))
         .on_click(cx.listener(move |this, _, window, cx| {
             if this.mode_enabled(chip, cx) {
                 this.dispatch(AppCommand::ToggleMode(chip), window, cx);
             }
         }))
+}
+
+/// The Exploded slider row shown above the strip while that mode is active.
+fn exploded_row(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+    let theme = &app.theme;
+    let fill = app.exploded_factor.clamp(0.0, 1.0);
+    div()
+        .px(theme.space(1.0))
+        .py(theme.space(1.0))
+        .flex()
+        .items_center()
+        .gap(theme.space(1.0))
+        .child(
+            div()
+                .id("exploded-track")
+                .relative()
+                .w(px(120.0))
+                .h(px(14.0))
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|this, event: &gpui::MouseDownEvent, _window, cx| {
+                        cx.stop_propagation();
+                        this.begin_exploded_drag(f32::from(event.position.x));
+                    }),
+                )
+                .child(
+                    div()
+                        .w_full()
+                        .h(px(4.0))
+                        .rounded_full()
+                        .bg(theme.well)
+                        .child(
+                            div()
+                                .w(px(120.0 * fill))
+                                .h(px(4.0))
+                                .rounded_full()
+                                .bg(theme.accent),
+                        ),
+                ),
+        )
+        .child(
+            div()
+                .w(px(28.0))
+                .text_size(px(theme.text_sm))
+                .text_color(theme.text_faint)
+                .child(format!("{:.2}", app.exploded_factor)),
+        )
 }

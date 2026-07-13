@@ -1,5 +1,4 @@
-//! Left tool rail: a Spaces card and a Tools card, plus the shared geometry
-//! that the Items / History panels and the adaptive menu align against.
+//! Left tool rail: Spaces and Tools cards, modeling panels, and interaction modes.
 
 use gpui::{
     Anchor, AnchoredPositionMode, Context, ElementId, FontWeight, MouseButton, Rgba, Stateful,
@@ -26,25 +25,15 @@ pub fn rail_top(theme: &Theme) -> f32 {
     theme.unit * 6.0 + theme.control + 6.0
 }
 
-/// Height of a card holding `rows` rail rows, including its vertical padding.
-fn card_height(theme: &Theme, rows: f32) -> f32 {
-    theme.unit * 3.0 + rows * ROW_H
-}
-
-/// Y coordinate (logical px) where the Items / History panels begin, i.e. just
-/// below the Spaces and Tools cards.
-pub fn panels_top(theme: &Theme) -> f32 {
-    let gap = f32::from(theme.space(2.0));
-    rail_top(theme) + card_height(theme, 5.0) + gap + card_height(theme, 5.0) + gap
-}
-
 /// Builds the floating left rail anchored to the left edge.
 pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
     let theme = &app.theme;
     div()
         .absolute()
         .top(px(rail_top(theme)))
+        .bottom(theme.space(3.0))
         .left(px(LEFT_INSET))
+        .w(px(LEFT_WIDTH))
         .flex()
         .flex_col()
         .gap(theme.space(2.0))
@@ -55,6 +44,11 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
             materials_card(app, cx).into_any_element()
         } else {
             tools_card(app, cx).into_any_element()
+        })
+        .when(app.space == Space::Modeling, |column| {
+            column
+                .child(ui::panels::render(app, cx))
+                .child(ui::modes::render(app, cx))
         })
 }
 
@@ -106,8 +100,9 @@ fn spaces_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
                 "items",
                 crate::i18n::t("Items"),
                 None,
-                app.show_items,
+                false,
             )
+            .when(app.show_items, |row| row.bg(theme.active))
             .when(app.space == Space::Modeling, |row| {
                 row.on_click(cx.listener(|this, _, window, cx| {
                     this.dispatch(AppCommand::ToggleItemsPanel, window, cx)
@@ -121,8 +116,9 @@ fn spaces_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
                 "items",
                 crate::i18n::t("Variables"),
                 Some("⌘⌥V"),
-                app.show_variables,
+                false,
             )
+            .when(app.show_variables, |row| row.bg(theme.active))
             .on_click(cx.listener(|this, _, window, cx| {
                 this.dispatch(AppCommand::ToggleVariablesPanel, window, cx)
             })),

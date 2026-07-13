@@ -242,22 +242,13 @@ impl ModeChip {
         }
     }
 
-    /// Secondary state line shown under the chip, reflecting `active`.
-    pub fn state_label(self, active: bool) -> &'static str {
-        if active {
-            crate::i18n::t("On")
-        } else {
-            crate::i18n::t("Off")
-        }
-    }
-
     /// Icon asset name for the chip.
     pub fn icon(self) -> &'static str {
         match self {
             ModeChip::Section => "section",
             ModeChip::Isolate => "isolate",
             ModeChip::Measure => "measure",
-            ModeChip::Exploded => "move",
+            ModeChip::Exploded => "exploded",
         }
     }
 }
@@ -696,9 +687,9 @@ impl ToolId {
             ToolId::Fillet => "fillet",
             ToolId::Chamfer => "fillet",
             ToolId::OffsetFace => "offset",
-            ToolId::ReplaceFace => "offset",
+            ToolId::ReplaceFace => "replace-face",
             ToolId::Hole => "circle",
-            ToolId::Draft => "offset",
+            ToolId::Draft => "draft",
             ToolId::Split => "split",
             ToolId::Project => "project",
             ToolId::Union => "union",

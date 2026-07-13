@@ -5,7 +5,8 @@
 //! appears just right of the strip listing the most relevant tools. Clicking an
 //! entry fires the same [`AppCommand::ActivateTool`] the strip would. The card
 //! is content-sized and absolutely positioned, so it never intercepts viewport
-//! events outside its own bounds; it vanishes as soon as the selection clears.
+//! events outside its own bounds; it vanishes when the selection clears or a
+//! modeling pointer-drag begins.
 
 use gpui::{Context, div, prelude::*, px};
 
@@ -18,6 +19,10 @@ use crate::{
 
 /// Builds the adaptive menu, or nothing when no tool applies to the selection.
 pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> Option<impl IntoElement> {
+    if app.viewport.read(cx).interaction_in_progress() {
+        return None;
+    }
+
     let theme = &app.theme;
     let tools = adaptive_tools(&app.document.read(cx).selection, app.document.read(cx));
     if tools.is_empty() {

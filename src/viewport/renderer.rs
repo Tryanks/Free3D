@@ -260,6 +260,7 @@ pub struct Renderer {
     ribbon_pipeline: wgpu::RenderPipeline,
     grid_pipeline: wgpu::RenderPipeline,
     gizmo_pipeline: wgpu::RenderPipeline,
+    cube_fill_pipeline: wgpu::RenderPipeline,
     cube_pipeline: wgpu::RenderPipeline,
     reference_image_pipeline: wgpu::RenderPipeline,
     reference_image_layout: wgpu::BindGroupLayout,
@@ -799,13 +800,14 @@ impl Renderer {
             cube_hover_groups.push(group);
             cube_hover_tint_buffers.push(buffer);
         }
-        let (cube_pipeline, label_bind_group, label_texture) = create_cube_pipeline(
-            &device,
-            &queue,
-            &bind_group_layout,
-            &shader,
-            orientation_cube::build_label_atlas(),
-        );
+        let (cube_fill_pipeline, cube_pipeline, label_bind_group, label_texture) =
+            create_cube_pipeline(
+                &device,
+                &queue,
+                &bind_group_layout,
+                &shader,
+                orientation_cube::build_label_atlas(),
+            );
         let orientation_cube = OrientationCubeGpu {
             vertices: cube_vertex_buffer(&device, "orientation cube vertices", &cube_vertices),
             indices: index_buffer(&device, "orientation cube indices", &cube_indices),
@@ -889,6 +891,7 @@ impl Renderer {
             ribbon_pipeline,
             grid_pipeline,
             gizmo_pipeline,
+            cube_fill_pipeline,
             cube_pipeline,
             reference_image_pipeline,
             reference_image_layout,
@@ -1869,7 +1872,6 @@ impl Renderer {
             });
             pass.set_viewport(rect.x, rect.y, rect.size, rect.size, 0.0, 1.0);
             pass.set_scissor_rect(scissor_x, scissor_y, scissor_width, scissor_height);
-            pass.set_pipeline(&self.cube_pipeline);
             pass.set_bind_group(1, &self.orientation_cube.label_bind_group, &[]);
             pass.set_vertex_buffer(0, self.orientation_cube.vertices.slice(..));
             pass.set_index_buffer(
@@ -1877,6 +1879,13 @@ impl Renderer {
                 wgpu::IndexFormat::Uint32,
             );
             for (index, (region, range)) in self.orientation_cube.ranges.iter().enumerate() {
+                let show_label = orientation_cube.hovered == Some(*region)
+                    && orientation_cube::face_label_for(*region).is_some();
+                pass.set_pipeline(if show_label {
+                    &self.cube_pipeline
+                } else {
+                    &self.cube_fill_pipeline
+                });
                 let groups = if orientation_cube.hovered == Some(*region) {
                     &self.orientation_cube.hover_groups
                 } else {
@@ -2455,7 +2464,12 @@ fn create_cube_pipeline(
     scene_layout: &wgpu::BindGroupLayout,
     shader: &wgpu::ShaderModule,
     atlas: Option<Vec<u8>>,
-) -> (wgpu::RenderPipeline, wgpu::BindGroup, wgpu::Texture) {
+) -> (
+    wgpu::RenderPipeline,
+    wgpu::RenderPipeline,
+    wgpu::BindGroup,
+    wgpu::Texture,
+) {
     let label_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("orientation cube label layout"),
         entries: &[
@@ -2532,54 +2546,63 @@ fn create_cube_pipeline(
             },
         ],
     });
-    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("orientation cube"),
-        layout: Some(&layout),
-        vertex: wgpu::VertexState {
-            module: shader,
-            entry_point: Some("vs_cube"),
-            compilation_options: Default::default(),
-            buffers: &[wgpu::VertexBufferLayout {
-                array_stride: size_of::<CubeVertex>() as u64,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &wgpu::vertex_attr_array![
-                    0 => Float32x3,
-                    1 => Float32x3,
-                    2 => Float32x2,
-                    3 => Float32
-                ],
-            }],
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: shader,
-            entry_point: Some("fs_cube"),
-            compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: COLOR_FORMAT,
-                blend: Some(wgpu::BlendState::REPLACE),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            cull_mode: Some(wgpu::Face::Back),
-            ..Default::default()
-        },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: Some(true),
-            depth_compare: Some(wgpu::CompareFunction::LessEqual),
-            stencil: Default::default(),
-            bias: Default::default(),
-        }),
-        multisample: wgpu::MultisampleState {
-            count: SAMPLE_COUNT,
-            ..Default::default()
-        },
-        multiview_mask: None,
-        cache: None,
-    });
-    (pipeline, label_bind_group, atlas_texture)
+    let create_pipeline = |label, fragment_entry| {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(label),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vs_cube"),
+                compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: size_of::<CubeVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![
+                        0 => Float32x3,
+                        1 => Float32x3,
+                        2 => Float32x2,
+                        3 => Float32
+                    ],
+                }],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some(fragment_entry),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: COLOR_FORMAT,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                cull_mode: Some(wgpu::Face::Back),
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: SAMPLE_COUNT,
+                ..Default::default()
+            },
+            multiview_mask: None,
+            cache: None,
+        })
+    };
+    let fill_pipeline = create_pipeline("orientation cube fill", "fs_cube_fill");
+    let label_pipeline = create_pipeline("orientation cube label", "fs_cube");
+    (
+        fill_pipeline,
+        label_pipeline,
+        label_bind_group,
+        atlas_texture,
+    )
 }
 
 fn cube_region_color(theme: CanvasTheme, region: Region) -> [f32; 4] {
@@ -3265,6 +3288,7 @@ struct BackgroundOut { @builtin(position) clip: vec4<f32>, @location(0) vertical
     let label_color = uniforms.edge.rgb * 0.58;
     return vec4(mix(tint.color.rgb, label_color, coverage), tint.color.a);
 }
+@fragment fn fs_cube_fill(_input: CubeOut) -> @location(0) vec4<f32> { return tint.color; }
 @fragment fn fs_tint_clipped(input: Out) -> @location(0) vec4<f32> {
     if (dot(input.world, uniforms.clip_plane.xyz) > uniforms.clip_plane.w) { discard; }
     return tint.color;
