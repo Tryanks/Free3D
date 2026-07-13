@@ -20,7 +20,7 @@ pub(crate) fn meshes(shapes: &[&Shape]) -> Result<Vec<OcctMesh>, String> {
 }
 
 pub(crate) fn write_obj(path: &Path, meshes: &[OcctMesh]) -> Result<(), String> {
-    let mut output = String::from("# Free3D OBJ\n");
+    let mut output = String::from("# Ductile OBJ\n");
     let mut offset = 1_u32;
     for mesh in meshes {
         for point in &mesh.positions {
@@ -86,7 +86,7 @@ pub(crate) fn read_obj_shape(path: &Path) -> Result<Shape, String> {
     if triangles.is_empty() {
         return Err("OBJ contains no polygon faces".to_owned());
     }
-    let mut stl = String::from("solid free3d_obj\n");
+    let mut stl = String::from("solid ductile_obj\n");
     for triangle in triangles {
         stl.push_str("facet normal 0 0 0\nouter loop\n");
         for index in triangle {
@@ -95,13 +95,13 @@ pub(crate) fn read_obj_shape(path: &Path) -> Result<Shape, String> {
         }
         stl.push_str("endloop\nendfacet\n");
     }
-    stl.push_str("endsolid free3d_obj\n");
+    stl.push_str("endsolid ductile_obj\n");
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
     let temporary =
-        std::env::temp_dir().join(format!("free3d-obj-{}-{unique}.stl", std::process::id()));
+        std::env::temp_dir().join(format!("ductile-obj-{}-{unique}.stl", std::process::id()));
     std::fs::write(&temporary, stl).map_err(|error| error.to_string())?;
     let result = Shape::read_stl(&temporary).map_err(|error| error.to_string());
     let _ = std::fs::remove_file(temporary);
@@ -162,7 +162,7 @@ fn gltf_json(
     if let Some(uri) = uri {
         buffer["uri"] = json!(uri);
     }
-    json!({"asset":{"version":"2.0","generator":"Free3D"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":primitives}],"buffers":[buffer],"bufferViews":buffer_views,"accessors":accessors})
+    json!({"asset":{"version":"2.0","generator":"Ductile"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":primitives}],"buffers":[buffer],"bufferViews":buffer_views,"accessors":accessors})
 }
 
 pub(crate) fn write_gltf(path: &Path, meshes: &[OcctMesh], binary: bool) -> Result<(), String> {

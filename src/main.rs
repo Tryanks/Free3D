@@ -28,13 +28,14 @@ mod viewport;
 use gpui::{App, AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use gpui_platform::application;
 
-use app::Free3dApp;
+use app::DuctileApp;
 use ui::icons::Assets;
 
 fn main() {
+    settings::migrate_legacy_config();
     i18n::init(settings::load().language);
-    if std::env::var_os("FREE3D_IO_CHECK").is_some() {
-        let path = std::env::temp_dir().join("free3d-io-check.step");
+    if std::env::var_os("DUCTILE_IO_CHECK").is_some() {
+        let path = std::env::temp_dir().join("ductile-io-check.step");
         let mut document = app::startup_document();
         if document.bodies.is_empty() {
             document.add_primitive(history::PrimitiveKind::Box {
@@ -50,7 +51,7 @@ fn main() {
             std::process::exit(1);
         }
         let bodies = document.bodies.len();
-        let split_path = std::env::temp_dir().join("free3d-io-check-split.step");
+        let split_path = std::env::temp_dir().join("ductile-io-check-split.step");
         let mut source = document::Document::new();
         source.add_primitive(history::PrimitiveKind::Box {
             min: glam::DVec3::ZERO,
@@ -76,7 +77,7 @@ fn main() {
             std::process::exit(1);
         }
         for extension in ["obj", "3mf", "gltf", "iges"] {
-            let output = std::env::temp_dir().join(format!("free3d-io-check.{extension}"));
+            let output = std::env::temp_dir().join(format!("ductile-io-check.{extension}"));
             let result = source
                 .export(&output)
                 .and_then(|()| std::fs::read(&output).map_err(|error| error.to_string()))
@@ -98,7 +99,7 @@ fn main() {
             }
             println!("IO_CHECK {extension}=ok");
         }
-        let dxf_path = std::env::temp_dir().join("free3d-io-check.dxf");
+        let dxf_path = std::env::temp_dir().join("ductile-io-check.dxf");
         let sketch = source.add_sketch(sketch::SketchPlane::xy());
         source.add_sketch_entities(
             sketch,
@@ -116,29 +117,29 @@ fn main() {
             std::process::exit(1);
         }
         println!("IO_CHECK dxf=ok");
-        let f3d_path = std::env::temp_dir().join("free3d-io-check.f3d");
+        let ductile_path = std::env::temp_dir().join("ductile-io-check.ductile");
         let expected_bodies = source.bodies.len();
         let expected_history = source.history.len();
         let loaded = source
-            .save_to(&f3d_path)
-            .and_then(|()| document::Document::load_from(&f3d_path));
+            .save_to(&ductile_path)
+            .and_then(|()| document::Document::load_from(&ductile_path));
         let loaded = match loaded {
             Ok(loaded) => loaded,
             Err(error) => {
-                eprintln!("IO_CHECK f3d failed: {error}");
+                eprintln!("IO_CHECK ductile failed: {error}");
                 std::process::exit(1);
             }
         };
         if loaded.bodies.len() != expected_bodies || loaded.history.len() != expected_history {
             eprintln!(
-                "IO_CHECK f3d failed: expected {expected_bodies} bodies/{expected_history} history, got {}/{}",
+                "IO_CHECK ductile failed: expected {expected_bodies} bodies/{expected_history} history, got {}/{}",
                 loaded.bodies.len(),
                 loaded.history.len()
             );
             std::process::exit(1);
         }
         println!("IO_CHECK bodies={bodies} split={} ok", split.bodies.len());
-        println!("IO_CHECK f3d=ok");
+        println!("IO_CHECK ductile=ok");
         std::process::exit(0);
     }
     application().with_assets(Assets).run(|cx: &mut App| {
@@ -162,7 +163,7 @@ fn main() {
                 ..Default::default()
             },
             |window, cx| {
-                let root = cx.new(Free3dApp::new);
+                let root = cx.new(DuctileApp::new);
                 root.update(cx, |app, cx| {
                     app.start_autosave_timer(cx);
                     app.prompt_for_recovery(window, cx);
@@ -201,7 +202,7 @@ fn main() {
                 root
             },
         )
-        .expect("failed to open the Free3D window");
+        .expect("failed to open the Ductile window");
         cx.activate(true);
     });
 }

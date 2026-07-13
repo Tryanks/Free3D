@@ -2,7 +2,7 @@
 name = "occt-bridge"
 version = "0.1.0"
 edition = "2024"
-links = "free3d_occt_bridge"
+links = "ductile_occt_bridge"
 
 [dependencies]
 cxx = "=1.0.197"

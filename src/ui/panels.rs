@@ -3,7 +3,7 @@
 use gpui::{Context, FontWeight, Hsla, Rgba, SharedString, div, prelude::*, px};
 
 use crate::{
-    app::{Free3dApp, HistoryNumericField},
+    app::{DuctileApp, HistoryNumericField},
     assembly::JointKind,
     document::{AxisId, BodyId, PlaneId, PointId, ReferenceImageId, SelItem},
     history::{HistoryOp, HistoryStep},
@@ -48,7 +48,7 @@ pub struct ItemRow {
 }
 
 /// Builds the shrinkable stack of left-side modeling panels.
-pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+pub fn render(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
 
     div()
@@ -64,7 +64,7 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
         })
 }
 
-fn variables_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn variables_panel(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let document = app.document.read(cx);
     let mut list = div()
@@ -214,7 +214,7 @@ fn variables_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoEle
         .child(list)
 }
 
-fn items_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn items_panel(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let document = app.document.read(cx);
     let mut rows: Vec<_> = document
@@ -426,7 +426,7 @@ fn items_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement
         .child(list)
 }
 
-fn history_panel(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn history_panel(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let rows = app.document.read(cx).history.clone();
     let mut list = div()
@@ -467,7 +467,7 @@ pub fn item_row(
     theme: &Theme,
     index: usize,
     row: &ItemRow,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) -> impl IntoElement {
     let name = row.name.clone();
     let visible = row.visible;
@@ -681,10 +681,10 @@ pub fn item_row(
 
 /// Renders one editable History row.
 pub fn history_row(
-    app: &Free3dApp,
+    app: &DuctileApp,
     index: usize,
     step: &HistoryStep,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) -> impl IntoElement {
     let theme = &app.theme;
     let suppressed = step.suppressed;

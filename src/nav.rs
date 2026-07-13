@@ -16,7 +16,7 @@ pub enum NavAction {
 pub enum NavPreset {
     /// Trackpad scroll orbits and Shift-scroll pans.
     #[default]
-    Free3dDefault,
+    DuctileDefault,
     /// Trackpad scroll zooms and Shift-scroll pans.
     ZoomScroll,
     /// Blender-compatible mouse and trackpad navigation.
@@ -32,7 +32,7 @@ pub enum NavPreset {
 impl NavPreset {
     /// Every preset in settings-menu order.
     pub const ALL: [Self; 6] = [
-        Self::Free3dDefault,
+        Self::DuctileDefault,
         Self::ZoomScroll,
         Self::Blender,
         Self::Fusion,
@@ -43,7 +43,7 @@ impl NavPreset {
     /// User-facing preset name.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Free3dDefault => crate::i18n::t("Free3D Default"),
+            Self::DuctileDefault => crate::i18n::t("Ductile Default"),
             Self::ZoomScroll => crate::i18n::t("Scroll to Zoom"),
             Self::Blender => crate::i18n::t("Blender Style"),
             Self::Fusion => crate::i18n::t("Fusion Style"),
@@ -54,7 +54,7 @@ impl NavPreset {
 
     fn bindings(self) -> &'static [NavBinding] {
         match self {
-            Self::Free3dDefault => DEFAULT_PRESET,
+            Self::DuctileDefault => DEFAULT_PRESET,
             Self::ZoomScroll => ZOOM_SCROLL_PRESET,
             Self::Blender => BLENDER_PRESET,
             Self::Fusion => FUSION_PRESET,
@@ -333,7 +333,7 @@ mod tests {
         let modifiers = Modifiers::default();
         assert_eq!(
             resolve(
-                NavPreset::Free3dDefault,
+                NavPreset::DuctileDefault,
                 GestureKind::TrackpadScroll,
                 &modifiers,
             ),

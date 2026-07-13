@@ -12,13 +12,13 @@ use gpui::{Context, div, prelude::*, px};
 
 use crate::{
     adaptive::adaptive_tools,
-    app::Free3dApp,
+    app::DuctileApp,
     commands::{AppCommand, ToolId},
     ui::{self, glyph, tool_strip},
 };
 
 /// Builds the adaptive menu, or nothing when no tool applies to the selection.
-pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> Option<impl IntoElement> {
+pub fn render(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> Option<impl IntoElement> {
     if app.viewport.read(cx).interaction_in_progress() {
         return None;
     }
@@ -52,7 +52,7 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> Option<impl IntoE
 }
 
 /// One ranked tool row inside the adaptive card.
-fn entry(app: &Free3dApp, tool: ToolId, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn entry(app: &DuctileApp, tool: ToolId, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let active = app.active_tool == Some(tool);
     let fg = if active {

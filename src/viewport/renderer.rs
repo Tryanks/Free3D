@@ -286,7 +286,7 @@ impl Renderer {
             .map_err(|error| format!("no wgpu adapter: {error}"))?;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("Free3D device"),
+                label: Some("Ductile device"),
                 required_features: wgpu::Features::empty(),
                 required_limits: wgpu::Limits::default(),
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),

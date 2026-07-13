@@ -7,7 +7,7 @@ use gpui::{
 };
 
 use crate::{
-    app::{DrawingDrag, DrawingSectionState, DrawingTitleField, DrawingTool, Free3dApp},
+    app::{DrawingDrag, DrawingSectionState, DrawingTitleField, DrawingTool, DuctileApp},
     drawing::{
         self, DimensionKind, DrawingDim, Projection, SHEET_HEIGHT_MM, SHEET_WIDTH_MM, ViewKind,
     },
@@ -50,7 +50,7 @@ fn event_sheet(position: Point<Pixels>, layout: SheetLayout) -> Option<DVec2> {
 }
 
 /// Renders the paper, projected geometry, labels and projection chooser.
-pub fn render(app: &Free3dApp, window: &Window, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+pub fn render(app: &DuctileApp, window: &Window, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let sheet = layout(window);
     let drawing = app.document.read(cx).drawing.clone();
     let projections = app.drawing_projections(cx);
@@ -402,10 +402,10 @@ pub fn render(app: &Free3dApp, window: &Window, cx: &mut Context<Free3dApp>) -> 
 }
 
 fn projection_popover(
-    app: &Free3dApp,
+    app: &DuctileApp,
     at: DVec2,
     sheet: SheetLayout,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) -> impl IntoElement {
     let theme = &app.theme;
     let mut row = ui::surface_elevated(theme)
@@ -654,10 +654,10 @@ fn paint_view_marker(
 }
 
 fn drawing_mouse_down(
-    app: &mut Free3dApp,
+    app: &mut DuctileApp,
     event: &MouseDownEvent,
     window: &mut Window,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) {
     let sheet_layout = layout(window);
     let Some(position) = event_sheet(event.position, sheet_layout) else {
@@ -895,10 +895,10 @@ fn drawing_mouse_down(
 }
 
 fn drawing_mouse_move(
-    app: &mut Free3dApp,
+    app: &mut DuctileApp,
     event: &MouseMoveEvent,
     window: &mut Window,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) {
     if event.pressed_button != Some(MouseButton::Left) {
         return;
@@ -944,10 +944,10 @@ fn drawing_mouse_move(
 }
 
 fn drawing_mouse_up(
-    app: &mut Free3dApp,
+    app: &mut DuctileApp,
     event: &MouseUpEvent,
     window: &mut Window,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) {
     let drag = app.drawing_drag.take();
     if let Some(DrawingDrag::Detail { parent_id, center }) = drag
@@ -992,7 +992,7 @@ fn drawing_mouse_up(
     cx.notify();
 }
 
-fn hit_view(app: &Free3dApp, position: DVec2, cx: &Context<Free3dApp>) -> Option<u64> {
+fn hit_view(app: &DuctileApp, position: DVec2, cx: &Context<DuctileApp>) -> Option<u64> {
     app.document
         .read(cx)
         .drawing
@@ -1012,11 +1012,11 @@ fn hit_view(app: &Free3dApp, position: DVec2, cx: &Context<Free3dApp>) -> Option
 }
 
 fn create_section_view(
-    app: &mut Free3dApp,
+    app: &mut DuctileApp,
     parent_id: u64,
     line_a: DVec2,
     line_b: DVec2,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) {
     let parent = app
         .document
@@ -1071,7 +1071,7 @@ fn create_section_view(
     app.drawing_cache.remove(&id);
 }
 
-fn section_label(app: &Free3dApp, cx: &Context<Free3dApp>) -> String {
+fn section_label(app: &DuctileApp, cx: &Context<DuctileApp>) -> String {
     let count = app
         .document
         .read(cx)
@@ -1084,7 +1084,7 @@ fn section_label(app: &Free3dApp, cx: &Context<Free3dApp>) -> String {
     ((b'A' + count.min(25) as u8) as char).to_string()
 }
 
-fn detail_label(app: &Free3dApp, cx: &Context<Free3dApp>) -> String {
+fn detail_label(app: &DuctileApp, cx: &Context<DuctileApp>) -> String {
     let count = app
         .document
         .read(cx)
@@ -1098,9 +1098,9 @@ fn detail_label(app: &Free3dApp, cx: &Context<Free3dApp>) -> String {
 }
 
 fn hit_circle(
-    app: &Free3dApp,
+    app: &DuctileApp,
     position: DVec2,
-    cx: &Context<Free3dApp>,
+    cx: &Context<DuctileApp>,
 ) -> Option<(DVec2, DVec2, f64)> {
     for view in app.document.read(cx).drawing.sheet().views.iter().rev() {
         let Some((_, projected)) = app.drawing_cache.get(&view.id) else {
@@ -1121,9 +1121,9 @@ fn hit_circle(
 }
 
 fn hit_line(
-    app: &Free3dApp,
+    app: &DuctileApp,
     position: DVec2,
-    cx: &Context<Free3dApp>,
+    cx: &Context<DuctileApp>,
 ) -> Option<(u64, DVec2, DVec2)> {
     let mut best = None;
     for view in &app.document.read(cx).drawing.sheet().views {
@@ -1147,10 +1147,10 @@ fn hit_line(
 }
 
 fn snap_endpoint(
-    app: &Free3dApp,
+    app: &DuctileApp,
     position: DVec2,
     sheet: SheetLayout,
-    cx: &Context<Free3dApp>,
+    cx: &Context<DuctileApp>,
 ) -> Option<(u64, DVec2, f64)> {
     let document = app.document.read(cx);
     let mut best: Option<(u64, DVec2, f64, f64)> = None;

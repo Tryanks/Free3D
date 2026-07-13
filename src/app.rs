@@ -35,6 +35,17 @@ use crate::{
     viewport::{AnalysisMode, DisplayMode, Viewport, ViewportEvent},
 };
 
+/// Ductile opens legacy Free3D `.f3d` projects as well as current `.ductile` projects.
+pub(crate) fn is_project_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            ["ductile", "f3d"]
+                .iter()
+                .any(|value| extension.eq_ignore_ascii_case(value))
+        })
+}
+
 fn joint_editor_internal_value(kind: JointKind, units: Units, displayed: f64) -> f64 {
     if kind == JointKind::Revolute {
         displayed.to_radians()
@@ -141,7 +152,7 @@ pub enum InspectionCard {
 }
 
 /// Root view: the full-window viewport with floating chrome layered above it.
-pub struct Free3dApp {
+pub struct DuctileApp {
     /// Active full-window destination.
     pub screen: AppScreen,
     /// Active top-level workspace.
@@ -271,18 +282,14 @@ pub struct Free3dApp {
     exploded_last_x: f32,
 }
 
-impl Free3dApp {
+impl DuctileApp {
     /// Creates the root, its viewport child and default chrome state.
     pub fn new(cx: &mut Context<Self>) -> Self {
         let cli_path = std::env::args_os()
             .skip(1)
             .map(std::path::PathBuf::from)
-            .find(|path| {
-                path.extension()
-                    .and_then(|extension| extension.to_str())
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("f3d"))
-            });
-        let demo = std::env::var_os("FREE3D_DEMO_SCENE").is_some();
+            .find(|path| is_project_file(path));
+        let demo = std::env::var_os("DUCTILE_DEMO_SCENE").is_some();
         let startup_path = cli_path.filter(|path| path.is_file());
         let startup = startup_path
             .as_deref()
@@ -290,9 +297,9 @@ impl Free3dApp {
             .unwrap_or_else(startup_document);
         let document = cx.new(|_| startup);
         let settings = crate::settings::load();
-        // `FREE3D_THEME=light|dark` forces the startup appearance for VM
+        // `DUCTILE_THEME=light|dark` forces the startup appearance for VM
         // verification; otherwise the default (light) theme is used.
-        let theme = match std::env::var("FREE3D_THEME").ok().as_deref() {
+        let theme = match std::env::var("DUCTILE_THEME").ok().as_deref() {
             Some("dark") => Theme::dark(),
             Some("light") => Theme::light(),
             _ if settings.dark_theme => Theme::dark(),
@@ -305,17 +312,15 @@ impl Free3dApp {
         });
         let saved_revision = document.read(cx).revision;
         let document_subscription = cx.observe(&document, |_app, _, cx| cx.notify());
-        let viewport_subscription = cx.subscribe(&viewport, |app, _, event, cx| {
-            match event {
-                ViewportEvent::ModesExited => {
-                    app.active_modes = [false; 4];
-                    app.exploded_factor = 0.0;
-                    cx.notify();
-                }
-                ViewportEvent::InteractionChanged => cx.notify(),
+        let viewport_subscription = cx.subscribe(&viewport, |app, _, event, cx| match event {
+            ViewportEvent::ModesExited => {
+                app.active_modes = [false; 4];
+                app.exploded_factor = 0.0;
+                cx.notify();
             }
+            ViewportEvent::InteractionChanged => cx.notify(),
         });
-        let demo_section = std::env::var("FREE3D_DEMO_SCENE").is_ok_and(|scene| scene == "5");
+        let demo_section = std::env::var("DUCTILE_DEMO_SCENE").is_ok_and(|scene| scene == "5");
         let mut recent_files = load_recent_files();
         if let Some(path) = &startup_path {
             recent_files.retain(|recent| recent != path);
@@ -366,7 +371,7 @@ impl Free3dApp {
             grid_before_visualize: None,
             selection_filter_before_visualize: None,
             display_mode: DisplayMode::Shaded,
-            analysis: std::env::var("FREE3D_ANALYSIS")
+            analysis: std::env::var("DUCTILE_ANALYSIS")
                 .is_ok_and(|value| value.eq_ignore_ascii_case("zebra"))
                 .then_some(AnalysisMode::Zebra)
                 .unwrap_or_default(),
@@ -1764,7 +1769,7 @@ impl Free3dApp {
             return;
         };
         let path = (1..)
-            .map(|n| desktop.join(format!("Free3D-{}-{n}.png", crate::i18n::t("Screenshot"))))
+            .map(|n| desktop.join(format!("Ductile-{}-{n}.png", crate::i18n::t("Screenshot"))))
             .find(|candidate| !candidate.exists())
             .expect("an unused screenshot filename exists");
         if let Err(error) = image.save(&path) {
@@ -1999,7 +2004,8 @@ impl Free3dApp {
     }
 
     fn save_project(&mut self, cx: &mut Context<Self>) {
-        if let Some(path) = self.project_path.clone() {
+        if let Some(mut path) = self.project_path.clone() {
+            path.set_extension("ductile");
             self.save_project_to(path, cx);
         } else {
             self.save_project_as(cx);
@@ -2010,15 +2016,19 @@ impl Free3dApp {
         let suggested = self
             .project_path
             .as_deref()
-            .and_then(std::path::Path::file_name)
+            .and_then(std::path::Path::file_stem)
             .and_then(std::ffi::OsStr::to_str)
-            .unwrap_or(crate::i18n::t("Untitled.f3d"));
+            .filter(|stem| !stem.is_empty())
+            .map_or_else(
+                || crate::i18n::t("Untitled.ductile").to_owned(),
+                |stem| format!("{stem}.ductile"),
+            );
         let designs_dir = crate::home::designs_dir();
         if let Err(error) = std::fs::create_dir_all(&designs_dir) {
             eprintln!("failed to create designs folder: {error}");
             return;
         }
-        let prompt = cx.prompt_for_new_path(&designs_dir, Some(suggested));
+        let prompt = cx.prompt_for_new_path(&designs_dir, Some(&suggested));
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(mut path))) = prompt.await else {
                 return;
@@ -2026,9 +2036,9 @@ impl Free3dApp {
             if !path
                 .extension()
                 .and_then(|extension| extension.to_str())
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("f3d"))
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("ductile"))
             {
-                path.set_extension("f3d");
+                path.set_extension("ductile");
             }
             this.update(cx, |this, cx| this.save_project_to(path, cx))
                 .ok();
@@ -2088,18 +2098,14 @@ impl Free3dApp {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some(crate::i18n::t("Open Free3D project (.f3d)").into()),
+            prompt: Some(crate::i18n::t("Open Ductile project (.ductile, .f3d)").into()),
         });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = prompt.await else {
                 return;
             };
-            let Some(path) = paths.into_iter().find(|path| {
-                path.extension()
-                    .and_then(|extension| extension.to_str())
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("f3d"))
-            }) else {
-                eprintln!("failed to open project: select an .f3d file");
+            let Some(path) = paths.into_iter().find(|path| is_project_file(path)) else {
+                eprintln!("failed to open project: select a .ductile or .f3d file");
                 return;
             };
             this.update(cx, |this, cx| this.open_project_path_now(path, cx))
@@ -2399,7 +2405,7 @@ impl Free3dApp {
             return;
         }
         let mut new = old.with_file_name(name);
-        new.set_extension("f3d");
+        new.set_extension("ductile");
         if new != old && !new.exists() {
             match std::fs::rename(&old, &new) {
                 Ok(()) => {
@@ -3027,7 +3033,7 @@ impl Free3dApp {
 
 pub(crate) fn startup_document() -> Document {
     let mut document = Document::new();
-    if let Some(scene) = std::env::var_os("FREE3D_DEMO_SCENE") {
+    if let Some(scene) = std::env::var_os("DUCTILE_DEMO_SCENE") {
         if scene == "9" {
             let base = document.add_primitive(PrimitiveKind::Box {
                 min: dvec3(-20.0, -10.0, 0.0),
@@ -3304,7 +3310,7 @@ pub(crate) fn startup_document() -> Document {
     document
 }
 
-impl Free3dApp {
+impl DuctileApp {
     /// Changes workspace and closes chrome that is irrelevant to the destination.
     pub fn set_space(&mut self, space: Space, cx: &mut Context<Self>) {
         if self.space != Space::Visualize && space == Space::Visualize {
@@ -3582,10 +3588,10 @@ fn project_visible_bodies_with(
     projected
 }
 
-impl Render for Free3dApp {
+impl Render for DuctileApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.screen == AppScreen::Home {
-            window.set_window_title("Free3D");
+            window.set_window_title("Ductile");
             window.focus(&self.home_focus, cx);
             self.refresh_home();
             let query = self.home_query.trim().to_lowercase();
@@ -3603,7 +3609,7 @@ impl Render for Free3dApp {
             }
             return crate::home::render(self, cx).into_any_element();
         }
-        window.set_window_title("Free3D");
+        window.set_window_title("Ductile");
         if self.space == Space::Drawing {
             self.refresh_drawing_cache(cx);
         }
@@ -3640,7 +3646,7 @@ fn move_to_trash(path: &std::path::Path) -> Result<(), String> {
 }
 
 fn recent_file_path() -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|config| config.join("Free3D/recent.json"))
+    dirs::config_dir().map(|config| config.join("Ductile/recent.json"))
 }
 
 fn load_recent_files() -> Vec<std::path::PathBuf> {

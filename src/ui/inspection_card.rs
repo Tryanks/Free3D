@@ -3,12 +3,12 @@
 use gpui::{Context, FontWeight, div, prelude::*, px};
 
 use crate::{
-    app::{Free3dApp, InspectionCard},
+    app::{DuctileApp, InspectionCard},
     ui,
 };
 
 /// Renders the current inspection result above the lower-right viewport.
-pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> Option<impl IntoElement> {
+pub fn render(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> Option<impl IntoElement> {
     let result = app.inspection_card.as_ref()?;
     let theme = &app.theme;
     let (title, lines, pairs) = match result {

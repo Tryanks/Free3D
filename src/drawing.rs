@@ -239,7 +239,7 @@ impl Default for TitleBlock {
     fn default() -> Self {
         Self {
             project_name: crate::i18n::t("Untitled Project").into(),
-            drawing_number: "F3D-001".into(),
+            drawing_number: "DUCTILE-001".into(),
             scale: crate::i18n::t("By View").into(),
             date: current_date(),
             units: "mm".into(),
@@ -1602,7 +1602,7 @@ mod tests {
         let drawing = Drawing::default();
         let svg = svg_string(&drawing, &HashMap::new(), &[]);
         assert!(svg.contains(crate::i18n::t("Project Name")));
-        assert!(svg.contains("F3D-001"));
+        assert!(svg.contains("DUCTILE-001"));
     }
 
     #[test]

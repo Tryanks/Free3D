@@ -3,7 +3,7 @@
 //! Every panel in this module positions itself absolutely so the viewport
 //! stays full-window underneath and keeps receiving pointer, scroll and pinch
 //! events everywhere the chrome does not paint. Submodules render into
-//! [`crate::app::Free3dApp`]'s context and emit [`crate::commands::AppCommand`]s
+//! [`crate::app::DuctileApp`]'s context and emit [`crate::commands::AppCommand`]s
 //! rather than mutating state directly.
 
 pub mod adaptive_menu;

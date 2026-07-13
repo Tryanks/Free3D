@@ -3,7 +3,7 @@
 use gpui::{Context, FontWeight, div, prelude::*, px};
 
 use crate::{
-    app::Free3dApp,
+    app::DuctileApp,
     commands::SearchCommand,
     theme::Theme,
     ui::{self, glyph},
@@ -31,7 +31,7 @@ pub fn filtered_commands(query: &str) -> Vec<SearchCommand> {
 }
 
 /// Renders the palette when it is open.
-pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> Option<impl IntoElement> {
+pub fn render(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> Option<impl IntoElement> {
     app.show_command_search.then(|| {
         let theme = &app.theme;
         let commands = filtered_commands(&app.command_query);
@@ -63,7 +63,7 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> Option<impl IntoE
                 ui::surface_elevated(theme)
                     .id("command-search")
                     .track_focus(&app.command_focus)
-                    .on_key_down(cx.listener(Free3dApp::command_search_key_down))
+                    .on_key_down(cx.listener(DuctileApp::command_search_key_down))
                     .on_mouse_down_out(cx.listener(|this, _, window, cx| {
                         this.close_command_search(window, cx);
                     }))
@@ -110,7 +110,7 @@ fn command_row(
     command: SearchCommand,
     index: usize,
     highlight: usize,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) -> impl IntoElement {
     div()
         .id(("search-command", index))

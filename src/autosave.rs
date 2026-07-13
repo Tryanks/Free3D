@@ -26,7 +26,7 @@ pub fn path_for(project_path: Option<&Path>) -> PathBuf {
     }
     crate::settings::settings_dir()
         .join("autosave")
-        .join(format!("untitled-{}.f3d", std::process::id()))
+        .join(format!("untitled-{}.ductile", std::process::id()))
 }
 
 /// Writes an autosave immediately, creating the untitled directory when needed.
@@ -73,7 +73,7 @@ pub fn discover(projects: &[PathBuf]) -> Vec<Recovery> {
     if let Ok(entries) = fs::read_dir(untitled_dir) {
         recoveries.extend(entries.flatten().filter_map(|entry| {
             let path = entry.path();
-            (path.extension().and_then(|value| value.to_str()) == Some("f3d")).then_some(Recovery {
+            crate::app::is_project_file(&path).then_some(Recovery {
                 autosave_path: path,
                 project_path: None,
             })
@@ -103,8 +103,8 @@ mod tests {
         let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let directory = tempfile::tempdir().unwrap();
         // SAFETY: this test serializes access to the process environment.
-        unsafe { std::env::set_var("FREE3D_SETTINGS_DIR", directory.path()) };
-        let project = directory.path().join("part.f3d");
+        unsafe { std::env::set_var("DUCTILE_SETTINGS_DIR", directory.path()) };
+        let project = directory.path().join("part.ductile");
         let mut document = Document::new();
         document.add_primitive(PrimitiveKind::Box {
             min: DVec3::ZERO,
@@ -131,6 +131,6 @@ mod tests {
                 .any(|item| item.autosave_path == untitled)
         );
         // SAFETY: protected by the same process-local test mutex.
-        unsafe { std::env::remove_var("FREE3D_SETTINGS_DIR") };
+        unsafe { std::env::remove_var("DUCTILE_SETTINGS_DIR") };
     }
 }

@@ -1,4 +1,4 @@
-//! Lightweight process-wide localization for Free3D user-facing copy.
+//! Lightweight process-wide localization for Ductile user-facing copy.
 //!
 //! English source strings are stable lookup keys. The selected language is an
 //! atomic value so a Settings change is visible to the next render without an
@@ -14,7 +14,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-/// A language supported by the Free3D interface.
+/// A language supported by the Ductile interface.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(u8)]
 pub enum Lang {
@@ -27,7 +27,7 @@ pub enum Lang {
 /// Persisted language preference.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum LangChoice {
-    /// Detect from `FREE3D_LANG`, then the operating-system locale.
+    /// Detect from `DUCTILE_LANG`, then the operating-system locale.
     #[default]
     Auto,
     /// Always use English.
@@ -60,7 +60,7 @@ pub fn init(choice: LangChoice) {
     let resolved = match choice {
         LangChoice::En => Lang::En,
         LangChoice::ZhCn => Lang::ZhCn,
-        LangChoice::Auto => std::env::var("FREE3D_LANG")
+        LangChoice::Auto => std::env::var("DUCTILE_LANG")
             .ok()
             .and_then(|value| lang_from_locale_str(&value))
             .or_else(|| sys_locale::get_locale().and_then(|value| lang_from_locale_str(&value)))
@@ -138,7 +138,7 @@ fn zh_lookup() -> &'static HashMap<&'static str, &'static str> {
 }
 
 static ZH_TRANSLATIONS: &[(&str, &str)] = &[
-    ("Free3D", "Free3D"),
+    ("Ductile", "Ductile"),
     ("Auto", "自动"),
     ("Language", "语言"),
     ("Home", "主页"),
@@ -426,7 +426,7 @@ static ZH_TRANSLATIONS: &[(&str, &str)] = &[
     ("cm", "厘米"),
     ("m", "米"),
     ("in", "英寸"),
-    ("Free3D Default", "Free3D 默认"),
+    ("Ductile Default", "Ductile 默认"),
     ("Scroll to Zoom", "滚动缩放"),
     ("Blender Style", "Blender 风格"),
     ("Fusion Style", "Fusion 风格"),
@@ -477,7 +477,10 @@ static ZH_TRANSLATIONS: &[(&str, &str)] = &[
         "Unsaved changes will be lost. Continue?",
         "未保存的更改将丢失，仍要继续？",
     ),
-    ("Open Free3D project (.f3d)", "打开 Free3D 工程 (.f3d)"),
+    (
+        "Open Ductile project (.ductile, .f3d)",
+        "打开 Ductile 工程 (.ductile、.f3d)",
+    ),
     (
         "A newer autosave was found. Restore it?",
         "检测到未保存的自动备份，是否恢复？",
@@ -555,7 +558,7 @@ static ZH_TRANSLATIONS: &[(&str, &str)] = &[
     ("Turn Right", "右旋"),
     ("Test", "测试"),
     ("Assembly Project", "装配项目"),
-    ("Untitled.f3d", "未命名.f3d"),
+    ("Untitled.ductile", "未命名.ductile"),
     ("No interference", "✓ 无干涉"),
     ("Undefined variable missing", "未定义变量 missing"),
     ("Page {}", "页 {}"),

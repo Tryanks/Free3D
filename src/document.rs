@@ -749,7 +749,7 @@ impl Document {
         self.revision = self.revision_clock;
     }
 
-    /// Saves the complete native project as a versioned `.f3d` JSON file.
+    /// Saves the complete native project as a versioned `.ductile` JSON file.
     pub fn save_to(&mut self, path: &Path) -> Result<(), String> {
         self.flush_sketch_history();
         let bodies = self
@@ -777,7 +777,7 @@ impl Document {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let project = ProjectFile {
-            format: "free3d".to_owned(),
+            format: "ductile".to_owned(),
             version: 1,
             thumbnail: self.thumbnail.clone(),
             bodies,
@@ -837,7 +837,8 @@ impl Document {
         let header: ProjectHeader = serde_json::from_slice(&bytes).map_err(|error| {
             crate::i18n::tr1("Project file JSON is corrupt: {}", &error.to_string())
         })?;
-        if header.format != "free3d" {
+        // Ductile opens the legacy Free3D project payload marker.
+        if !matches!(header.format.as_str(), "ductile" | "free3d") {
             return Err(crate::i18n::tr1(
                 "Unsupported file format: {}",
                 &header.format.to_string(),
@@ -4569,7 +4570,7 @@ mod tests {
     #[test]
     fn native_roundtrip_preserves_variables_dimension_expr_and_replays_edit() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("variables.f3d");
+        let path = directory.path().join("variables.ductile");
         let mut document = Document::new();
         let variable = document.add_variable();
         assert!(document.update_variable(variable, "w".to_owned(), "40".to_owned()));
@@ -4879,7 +4880,7 @@ mod tests {
     #[test]
     fn step_document_roundtrip_preserves_bounds() {
         let path = std::env::temp_dir().join(format!(
-            "free3d-document-roundtrip-{}.step",
+            "ductile-document-roundtrip-{}.step",
             std::process::id()
         ));
         let mut source = Document::new();
@@ -5470,7 +5471,7 @@ mod tests {
     #[test]
     fn native_roundtrip_preserves_model_and_replay_bounds() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("roundtrip.f3d");
+        let path = directory.path().join("roundtrip.ductile");
         let mut source = Document::new();
         source.add_primitive(PrimitiveKind::Box {
             min: DVec3::new(-2.0, 3.0, 4.0),
@@ -5506,9 +5507,9 @@ mod tests {
                 0.5,
             ));
         source.drawing.sheet_mut().title.project_name = crate::i18n::t("Assembly Project").into();
-        source.drawing.sheet_mut().title.author = "Free3D".into();
+        source.drawing.sheet_mut().title.author = "Ductile".into();
         source.drawing.add_sheet();
-        source.drawing.sheet_mut().title.drawing_number = "F3D-002".into();
+        source.drawing.sheet_mut().title.drawing_number = "DUCTILE-002".into();
         source.drawing.active_sheet = 0;
         source.save_to(&path).expect("save native project");
 
@@ -5525,7 +5526,7 @@ mod tests {
             loaded.drawing.sheets[0].title.project_name,
             crate::i18n::t("Assembly Project")
         );
-        assert_eq!(loaded.drawing.sheets[1].title.drawing_number, "F3D-002");
+        assert_eq!(loaded.drawing.sheets[1].title.drawing_number, "DUCTILE-002");
         assert_eq!(loaded.history.len(), source.history.len());
         assert_eq!(loaded.active_sketch, source.active_sketch);
         assert!(loaded.undo.is_empty() && loaded.redo.is_empty());
@@ -5543,7 +5544,7 @@ mod tests {
     #[test]
     fn native_roundtrip_preserves_element_fingerprints() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("fingerprints.f3d");
+        let path = directory.path().join("fingerprints.ductile");
         let mut source = Document::new();
         let body = source.add_primitive(PrimitiveKind::Box {
             min: DVec3::ZERO,
@@ -5569,10 +5570,10 @@ mod tests {
     #[test]
     fn native_load_rejects_newer_version_and_corrupt_json() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("version.f3d");
+        let path = directory.path().join("version.ductile");
         let mut document = Document::new();
         document.save_to(&path).unwrap();
-        std::fs::write(&path, br#"{"format":"free3d","version":99}"#).unwrap();
+        std::fs::write(&path, br#"{"format":"ductile","version":99}"#).unwrap();
         let error = Document::load_from(&path)
             .err()
             .expect("newer version must fail");
@@ -5891,7 +5892,7 @@ mod tests {
             .add_construction_point(DVec3::new(4.0, 5.0, 6.0))
             .unwrap();
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("datums.f3d");
+        let path = directory.path().join("datums.ductile");
         document.save_to(&path).unwrap();
         let loaded = Document::load_from(&path).unwrap();
         assert_eq!(loaded.construction_axes, document.construction_axes);
@@ -6003,7 +6004,7 @@ mod tests {
     #[test]
     fn reference_image_bytes_survive_project_roundtrip() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("image.f3d");
+        let path = directory.path().join("image.ductile");
         let bytes = vec![0, 1, 2, 3, 254, 255];
         let mut document = Document::new();
         document.add_reference_image("plan", bytes.clone(), 125.0);
@@ -6030,7 +6031,7 @@ mod tests {
     #[test]
     fn old_project_without_material_uses_legacy_default() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("old.f3d");
+        let path = directory.path().join("old.ductile");
         let mut document = Document::new();
         document.add_primitive(PrimitiveKind::Box {
             min: DVec3::ZERO,
@@ -6080,7 +6081,7 @@ mod tests {
     #[test]
     fn native_roundtrip_preserves_body_materials() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("materials.f3d");
+        let path = directory.path().join("materials.ductile");
         let mut document = Document::new();
         let body = document.add_primitive(PrimitiveKind::Cylinder {
             origin: DVec3::ZERO,
@@ -6269,7 +6270,7 @@ mod tests {
     #[test]
     fn native_roundtrip_preserves_surface_kind() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("surface-kind.f3d");
+        let path = directory.path().join("surface-kind.ductile");
         let mut document = Document::new();
         let source = document.add_primitive(PrimitiveKind::Box {
             min: DVec3::ZERO,
@@ -6283,9 +6284,9 @@ mod tests {
     }
 
     #[test]
-    fn cosmetic_thread_metadata_persists_in_f3d() {
+    fn cosmetic_thread_metadata_persists_in_ductile() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("thread.f3d");
+        let path = directory.path().join("thread.ductile");
         let mut document = Document::new();
         let id = document.add_body(
             "Cylinder",
@@ -6328,7 +6329,7 @@ mod tests {
     #[test]
     fn thumbnail_save_load_roundtrip_is_a_512px_png() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("thumbnail.f3d");
+        let path = directory.path().join("thumbnail.ductile");
         let frame = vec![120_u8; 1024 * 640 * 4];
         let thumbnail = crate::home::encode_thumbnail(1024, 640, frame).unwrap();
         let mut document = Document::new();
@@ -6342,7 +6343,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_project_without_thumbnail_still_loads() {
+    fn legacy_free3d_project_without_thumbnail_still_loads() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("legacy.f3d");
         let mut document = Document::new();
@@ -6351,6 +6352,7 @@ mod tests {
         let bytes = std::fs::read(&path).unwrap();
         let mut json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         json.as_object_mut().unwrap().remove("thumbnail");
+        json["format"] = "free3d".into();
         std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
 
         let loaded = Document::load_from(&path).unwrap();

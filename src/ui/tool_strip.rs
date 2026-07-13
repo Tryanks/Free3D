@@ -6,7 +6,7 @@ use gpui::{
 };
 
 use crate::{
-    app::{DrawingTool, Free3dApp, MaterialNumericField, Space},
+    app::{DrawingTool, DuctileApp, MaterialNumericField, Space},
     commands::{AppCommand, ToolGroup, ToolId},
     document::{Material, SelItem, rgb_to_hsl},
     theme::Theme,
@@ -26,7 +26,7 @@ pub fn rail_top(theme: &Theme) -> f32 {
 }
 
 /// Builds the floating left rail anchored to the left edge.
-pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+pub fn render(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     div()
         .absolute()
@@ -53,7 +53,7 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
 }
 
 /// The Spaces card: workspace entries with the active one highlighted.
-fn spaces_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn spaces_card(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     ui::surface(theme)
         .w(px(LEFT_WIDTH))
@@ -201,7 +201,7 @@ fn material_color(color: [f32; 3]) -> gpui::Hsla {
 }
 
 /// Visualize-space body list and live material editor.
-fn materials_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn materials_card(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let document = app.document.read(cx);
     let selected_id = document
@@ -272,10 +272,10 @@ fn materials_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElem
 }
 
 fn material_editor(
-    app: &Free3dApp,
+    app: &DuctileApp,
     body: crate::document::BodyId,
     material: Material,
-    cx: &mut Context<Free3dApp>,
+    cx: &mut Context<DuctileApp>,
 ) -> impl IntoElement {
     let theme = &app.theme;
     let presets = [
@@ -423,7 +423,7 @@ fn material_editor(
         .child(custom)
 }
 
-fn drawing_tools_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn drawing_tools_card(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let hidden = app
         .drawing_selected_view
@@ -550,8 +550,8 @@ fn drawing_tool_row(
     icon: &'static str,
     label: &'static str,
     tool: DrawingTool,
-    app: &Free3dApp,
-    cx: &mut Context<Free3dApp>,
+    app: &DuctileApp,
+    cx: &mut Context<DuctileApp>,
 ) -> impl IntoElement {
     rail_row(theme, id, icon, label, None, app.drawing_tool == Some(tool)).on_click(cx.listener(
         move |this, _, _window, cx| {
@@ -566,7 +566,7 @@ fn drawing_tool_row(
 }
 
 /// The Tools card: command search plus the four tool-group flyouts.
-fn tools_card(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn tools_card(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let mut card = ui::surface(theme)
         .w(px(LEFT_WIDTH))
@@ -641,7 +641,11 @@ fn rail_row(
 }
 
 /// A single tool-group row, wrapping its flyout when open.
-fn group_entry(app: &Free3dApp, group: ToolGroup, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn group_entry(
+    app: &DuctileApp,
+    group: ToolGroup,
+    cx: &mut Context<DuctileApp>,
+) -> impl IntoElement {
     let theme = &app.theme;
     let active =
         app.open_group == Some(group) || app.active_tool.is_some_and(|tool| group.contains(tool));
@@ -669,7 +673,7 @@ fn group_entry(app: &Free3dApp, group: ToolGroup, cx: &mut Context<Free3dApp>) -
 }
 
 /// The flyout panel listing a group's tools, floating to the rail's right.
-fn flyout(app: &Free3dApp, group: ToolGroup, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn flyout(app: &DuctileApp, group: ToolGroup, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let mut panel = ui::surface_elevated(theme)
         .w(px(232.0))
@@ -708,7 +712,7 @@ fn flyout(app: &Free3dApp, group: ToolGroup, cx: &mut Context<Free3dApp>) -> imp
 }
 
 /// One selectable tool row inside a flyout.
-fn tool_row(app: &Free3dApp, tool: ToolId, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn tool_row(app: &DuctileApp, tool: ToolId, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let active = app.active_tool == Some(tool);
     let fg = if active {

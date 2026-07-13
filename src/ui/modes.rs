@@ -5,13 +5,13 @@
 use gpui::{Context, MouseButton, MouseMoveEvent, div, prelude::*, px};
 
 use crate::{
-    app::Free3dApp,
+    app::DuctileApp,
     commands::{AppCommand, ModeChip},
     ui::{self, glyph, tip},
 };
 
 /// Builds the compact mode strip pinned to the bottom of the left rail.
-pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+pub fn render(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let mut group = ui::surface(theme)
         .mt_auto()
@@ -41,7 +41,7 @@ pub fn render(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement 
 }
 
 /// One icon toggle in the strip, labelled via its hover tooltip.
-fn mode_button(app: &Free3dApp, chip: ModeChip, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn mode_button(app: &DuctileApp, chip: ModeChip, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let active = app.mode_active(chip);
     let enabled = app.mode_enabled(chip, cx);
@@ -76,7 +76,7 @@ fn mode_button(app: &Free3dApp, chip: ModeChip, cx: &mut Context<Free3dApp>) -> 
 }
 
 /// The Exploded slider row shown above the strip while that mode is active.
-fn exploded_row(app: &Free3dApp, cx: &mut Context<Free3dApp>) -> impl IntoElement {
+fn exploded_row(app: &DuctileApp, cx: &mut Context<DuctileApp>) -> impl IntoElement {
     let theme = &app.theme;
     let fill = app.exploded_factor.clamp(0.0, 1.0);
     div()
